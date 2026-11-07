@@ -1,29 +1,22 @@
 # Side Eye
 
-A wearable that detects smart glasses (e.g. Meta Ray-Bans) by listening for their
-Bluetooth Low Energy advertisements, and buzzes when one stays close for too long.
-Built at HackTheBurgh.
+A wearable that detects smart glasses (e.g. Meta Ray-Bans) by listening for their Bluetooth Low Energy advertisements, and buzzes when one stays close for too long. Built at HackTheBurgh.
 
 ## How it works
-- A **Raspberry Pi 4** scans BLE. For testing, an Android phone running **nRF Connect**
-  advertises a stand-in packet (company ID `0x058E`, data `CA01`).
+- A **Raspberry Pi 4** scans BLE. For testing, an Android phone running **nRF Connect** advertises a stand-in packet (company ID `0x058E`, data `CA01`).
 - Each second of signal becomes 4 features over sliding windows:
   - `mean_rssi`: smoothed RSSI, last 5 s
   - `var_rssi`: raw RSSI variance, last 5 s
   - `slope`: RSSI trend, last 5 s
   - `dwell_s`: seconds on the near side of a calibrated cutoff, last 10 s
-
   `close_streak_s` and `packet_rate_hz` are also logged.
-- A **3-second rule** drives the vibration motor. A small **random forest** (20 trees)
-  gives an ML "linger" score.
+- A **3-second rule** drives the vibration motor. A small **random forest** (20 trees) gives an ML "linger" score.
 - **Labels:** in a linger walk, seconds after the first 3 s of the stop are 1; everything else is 0.
 
 ## Evaluation
-24 real walks: 8 linger, 8 passer, 4 far, 2 bag, 2 blocked. Evaluated on held-out
-whole walks: 4 folds, each holding out 2 linger + 4 other walks.
+24 real walks: 8 linger, 8 passer, 4 far, 2 bag, 2 blocked. Evaluated on held-out whole walks: 4 folds, each holding out 2 linger + 4 other walks.
 
-Because 24 walks is very little data, we also simulate thousands of walks from public
-COVID contact-tracing Bluetooth data and compare four methods on the same folds:
+Because 24 walks is very little data, we also simulate thousands of walks from public COVID contact-tracing Bluetooth data and compare four methods on the same folds:
 
 | Method  | Trained on |
 |---------|------------|
@@ -35,9 +28,9 @@ COVID contact-tracing Bluetooth data and compare four methods on the same folds:
 ## Team
 | Person | Part | Folder |
 |--------|------|--------|
-| A | Pi code: scanner, features, rule, model training, service, tests (split between A and C TBD) | `pi/` |
-| B | Public-data augmentation (MITRE + NIST), model comparison | `nist/` |
-| C | Pi code (see A) | `pi/` |
+| Emma Burgess | Pi code: scanner, features, rule, model training, service, tests | `pi/` |
+| Rachel Ranjith | Public-data augmentation (MITRE + NIST), model comparison | `nist/` |
+| Lili Berengeur Jin | Pi code (with Emma Burgess) | `pi/` |
 
 ## Layout
 ```
