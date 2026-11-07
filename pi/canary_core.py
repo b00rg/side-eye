@@ -107,3 +107,17 @@ class Tracker:
             packet_rate_hz=len(recent) / 5.0,
             latest_rssi=self.samples[-1].raw,
         )
+
+
+# Wire button (two jumper wires touched together). What a press means:
+#   within BUTTON_WINDOW_S of a buzz: short touch -> TP (glasses were there), hold -> FP (false alarm)
+#   any other time:                  touch       -> FN (glasses here, but no buzz)
+BUTTON_WINDOW_S = 20.0
+HOLD_S = 1.5
+
+
+def classify_press(duration_s, since_buzz_s):
+    """Return 'tp', 'fp' or 'fn' for a button press of `duration_s` seconds."""
+    if since_buzz_s is not None and since_buzz_s <= BUTTON_WINDOW_S:
+        return "fp" if duration_s >= HOLD_S else "tp"
+    return "fn"
