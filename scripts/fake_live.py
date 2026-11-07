@@ -56,8 +56,18 @@ def session_readings():
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--stream", action="store_true",
+                    help="print live()'s output unfiltered, paced in real time (pipe into scripts/live_graph.py --stdin)")
+    ap.add_argument("--speed", type=float, default=1.0, help="with --stream: 2 = twice real time")
+    args = ap.parse_args()
     root = Path(tempfile.mkdtemp(prefix="side-eye-pi-"))
-    make_pi_folder(root)
+    if args.stream:   # keep stdout clean for the graph
+        with open(os.devnull, "w") as quiet, __import__("contextlib").redirect_stdout(quiet):
+            make_pi_folder(root)
+    else:
+        make_pi_folder(root)
     sys.path.insert(0, str(root))
     os.chdir(root)
     import canary  # the Pi's own code, from the Pi folder
@@ -94,7 +104,7 @@ def main():
             pending_presses.pop(0)
         if clock["t"] > end + 40:
             raise KeyboardInterrupt
-        await real_sleep(0)
+        await real_sleep(seconds / args.speed if args.stream else 0)
 
     canary.new_scanner = FakeScanner
     canary.time = SimpleNamespace(monotonic=lambda: clock["t"])
@@ -109,6 +119,12 @@ def main():
         return proc
     canary.retrain_in_background = retrain_and_wait
 
+    if args.stream:
+        try:
+            asyncio.run(canary.live(with_motor=False, use_model=True, feedback_on=True))
+        except (KeyboardInterrupt, BrokenPipeError):
+            pass
+        return
     print(f"Session: {', '.join(SESSION)} ({len(readings)} readings, {end / 60:.1f} min of fake time)\n")
     interesting = ("ALERT", "Feedback", "retrain", "Model updated", "Side Eye live", "feedback rows so far", "No model")
     real_print = print

@@ -51,6 +51,8 @@ def main():
                                       "--out", SIM_ROWS])
     step("2. Train Model 3 the way the Pi will (check)", ["pi/train_model.py", "--sim-rows", SIM_ROWS])
 
+    step("2b. Slide figure with Model 3 (results/walk_pair.png)", ["scripts/plot_walk_pair.py"])
+
     print("\n== 3. Rebuild Canary_code.zip")
     with zipfile.ZipFile(ZIP, "w", zipfile.ZIP_DEFLATED) as z:
         for name in PI_FILES:

@@ -59,6 +59,17 @@ Press the button (GPIO17 to GND), or type `y` + Enter, when someone is lingering
 "Model updated". Rehearse without hardware: `python3 scripts/fake_live.py` on the Mac runs the
 real `live` loop with a fake radio, clock and button.
 
+## 6b. Live signal graph (laptop, for the demo)
+```
+python3 scripts/live_graph.py --ssh canary@canary.local      # follows canary.service on the Pi
+```
+Top: signal vs the near/far cutoff. Bottom: Model 3's score vs 0.8. Solid BUZZ line when the motor
+fires; dotted line where the old 3-second rule would have. Rehearse without the Pi:
+`python3 scripts/fake_live.py --stream | python3 scripts/live_graph.py --stdin`, or replay recorded
+walks: `python3 scripts/live_graph.py --replay data/runs/<walk>.csv ...`. Slide figure (a walk-past and
+a linger side by side): `python3 scripts/plot_walk_pair.py` (or `--db "$DATABASE_URL"` to read from
+Tiger); `deploy_model3.py` also makes it as `results/walk_pair.png`.
+
 ## 7. Tiger (database) and Vultr (cloud compute)
 ```
 export DATABASE_URL='postgres://...'           # Tiger Cloud connection string

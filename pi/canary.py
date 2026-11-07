@@ -321,7 +321,7 @@ async def live(with_motor, use_model=False, feedback_on=True, retrain_every=RETR
                             feedback.alert(now, address)
                     score = f"{probability:.2f}" if probability is not None else "untrained"
                     print(
-                        f"RSSI {snap.latest_rssi:4d} dBm | near streak {snap.close_streak_s:4.1f} s "
+                        f"RSSI {snap.latest_rssi:4d} dBm | avg {snap.mean_rssi:6.1f} dBm | near streak {snap.close_streak_s:4.1f} s "
                         f"| ML linger score {score} | {'ALERT' if fire else 'watching'}",
                         flush=True,
                     )
