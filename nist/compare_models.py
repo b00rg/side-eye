@@ -94,32 +94,33 @@ def walk_alerts(scores, t_s, thresh=THRESH, gap=2.5):
     return None
 
 
-def score_walks(test, scores, rule=False):
+def score_walks(test, thresh=THRESH, rule_wait=None):
+    """Score every walk in `test`. rule_wait=None scores the model column `_score` at `thresh`;
+    otherwise scores the rule: alert once close_streak_s reaches rule_wait seconds."""
     out = dict(linger_detected=0, linger_total=0, false_alarm_walks=0, negative_walks=0, early_alerts=0,
-               tp=0, fp=0, fn=0)
-    for w, g in test.groupby("walk"):
-        g = g.reset_index(drop=True)
-        t = g.index.values.astype(float)
-        s = scores[g.index] if False else g["_score"].values
-        if rule:
-            hit = np.where(g.close_streak_s.values >= 3)[0]
-            first = t[hit[0]] if len(hit) else None
-            pred = (g.close_streak_s.values >= 3).astype(int)
+               tp=0, fp=0, fn=0, delays=[])
+    for _, g in test.groupby("walk", sort=False):
+        t = (g["t"] - g["t"].iloc[0]).to_numpy(float) if "t" in g else np.arange(len(g), dtype=float)
+        y = g.label.to_numpy()
+        if rule_wait is not None:
+            pred = (g.close_streak_s.to_numpy() >= rule_wait).astype(int)
+            first = t[pred.argmax()] if pred.any() else None
         else:
-            first = walk_alerts(s, t)
-            pred = (s >= THRESH).astype(int)
-        y = g.label.values
+            s = g["_score"].to_numpy()
+            pred = (s >= thresh).astype(int)
+            first = walk_alerts(s, t, thresh)
         out["tp"] += int(((pred == 1) & (y == 1)).sum())
         out["fp"] += int(((pred == 1) & (y == 0)).sum())
         out["fn"] += int(((pred == 0) & (y == 1)).sum())
         if g.kind.iloc[0] == "linger":
             out["linger_total"] += 1
-            if first is not None:
-                pos = np.where(y == 1)[0]
-                if len(pos) and first < pos[0]:
+            pos = np.flatnonzero(y == 1)
+            if first is not None and len(pos):
+                if first < t[pos[0]]:
                     out["early_alerts"] += 1
                 else:
                     out["linger_detected"] += 1
+                    out["delays"].append(first - (t[pos[0]] - 3))  # labels start 3 s after the stop
         else:
             out["negative_walks"] += 1
             if first is not None:
@@ -134,14 +135,24 @@ def fit(train, weights=None):
     return m
 
 
-def summarise(name, rs):
-    tot = {k: sum(r[k] for r in rs) for k in rs[0]}
+def summarise(name, rs, **extra):
+    tot = {k: sum(r[k] for r in rs) for k in rs[0] if k != "delays"}
+    delays = [d for r in rs for d in r["delays"]]
     prec = tot["tp"] / max(tot["tp"] + tot["fp"], 1)
     rec = tot["tp"] / max(tot["tp"] + tot["fn"], 1)
-    return dict(method=name,
+    return dict(method=name, **extra,
                 linger_detected=f'{tot["linger_detected"]}/{tot["linger_total"]}',
                 false_alarm_walks=f'{tot["false_alarm_walks"]}/{tot["negative_walks"]}',
-                early_alerts=tot["early_alerts"], precision=round(prec, 2), recall=round(rec, 2))
+                early_alerts=tot["early_alerts"],
+                stop_to_alert_s=round(float(np.median(delays)), 1) if delays else None,
+                precision=round(prec, 2), recall=round(rec, 2))
+
+
+def floats(text):
+    return [float(x) for x in text.split(",") if x.strip()]
+
+
+MODELS = ["Model 1: real only", "Model 2: sim only", "Model 3: sim + real"]
 
 
 def main():
@@ -151,6 +162,10 @@ def main():
     ap.add_argument("--cutoff", type=float, required=True)
     ap.add_argument("--sim-weight", type=float, default=0.2,
                     help="weight of each simulated row relative to a real row in Model 3")
+    ap.add_argument("--thresholds", type=floats, default=[0.6, 0.8, 0.9],
+                    help="model score cutoffs to sweep, comma-separated (main table uses 0.8)")
+    ap.add_argument("--rule-waits", type=floats, default=[1, 2, 3, 4, 5, 6],
+                    help="seconds the rule waits before alerting, comma-separated (main table uses 3)")
     args = ap.parse_args()
 
     sim = load_sim(args.sim, args.cutoff)
@@ -164,32 +179,38 @@ def main():
         sim = sim[~sim.walk.isin(held)]
         print("SANITY MODE: no real walks given, testing on 24 held-out simulated walks\n")
 
-    results = {k: [] for k in ["Rule (3 s)", "Model 1: real only", "Model 2: sim only", "Model 3: sim + real"]}
+    # Train once per fold; keep each held-out fold with all three models' scores.
     m2 = fit(sim)
+    scored = []
     for held in folds(test_pool):
         test = test_pool[test_pool.walk.isin(held)].copy()
         train_real = test_pool[~test_pool.walk.isin(held)]
-
-        test["_score"] = 0.0
-        results["Rule (3 s)"].append(score_walks(test, None, rule=True))
-
-        m1 = fit(train_real)
-        test["_score"] = m1.predict_proba(test[FEATS].values)[:, 1]
-        results["Model 1: real only"].append(score_walks(test, None))
-
-        test["_score"] = m2.predict_proba(test[FEATS].values)[:, 1]
-        results["Model 2: sim only"].append(score_walks(test, None))
-
         both = pd.concat([sim, train_real])
         w = np.concatenate([np.full(len(sim), args.sim_weight), np.ones(len(train_real))])
-        m3 = fit(both, w)
-        test["_score"] = m3.predict_proba(test[FEATS].values)[:, 1]
-        results["Model 3: sim + real"].append(score_walks(test, None))
+        for name, m in zip(MODELS, (fit(train_real), m2, fit(both, w))):
+            test[name] = m.predict_proba(test[FEATS].values)[:, 1]
+        scored.append(test)
 
-    table = pd.DataFrame([summarise(k, v) for k, v in results.items()])
+    def model_rows(name, thresh):
+        return [score_walks(f.assign(_score=f[name]), thresh=thresh) for f in scored]
+
+    table = pd.DataFrame([summarise("Rule (3 s)", [score_walks(f, rule_wait=3) for f in scored])]
+                         + [summarise(n, model_rows(n, THRESH)) for n in MODELS])
+    rule_sweep = pd.DataFrame([summarise("Rule", [score_walks(f, rule_wait=wt) for f in scored], wait_s=wt)
+                               for wt in args.rule_waits])
+    thresh_sweep = pd.DataFrame([summarise(n, model_rows(n, th), cutoff=th)
+                                 for n in MODELS for th in args.thresholds])
+
     print(table.to_string(index=False))
+    print("\nRule: how long to wait before alerting")
+    print(rule_sweep.drop(columns="method").to_string(index=False))
+    print("\nModels: score cutoff for an alert")
+    print(thresh_sweep.to_string(index=False))
     table.to_csv("comparison_results.csv", index=False)
-    print("\nSaved comparison_results.csv")
+    rule_sweep.to_csv("rule_wait_sweep.csv", index=False)
+    thresh_sweep.to_csv("threshold_sweep.csv", index=False)
+    print("\nSaved comparison_results.csv, rule_wait_sweep.csv, threshold_sweep.csv")
+    print("stop_to_alert_s = median seconds from the stop to the alert, for lingers caught in time.")
 
 
 if __name__ == "__main__":

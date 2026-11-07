@@ -21,6 +21,10 @@ Run every command from the repo root.
    `nist/settings_example.json` has the same format and can stand in until then.
 3. After the 24 real walks are recorded into `data/runs/` (`python3 pi/canary.py record <scenario>`):
    `python3 nist/compare_models.py --sim nist/sim --real data/runs --cutoff <threshold_dbm from settings.json>`
+   Prints the main table (rule waits 3 s, models alert at 0.8) plus two sweeps: the rule's wait
+   (`--rule-waits`, default 1-6 s) and the models' score cutoff (`--thresholds`, default
+   0.6,0.8,0.9). Saves `comparison_results.csv`, `rule_wait_sweep.csv`, `threshold_sweep.csv`.
+   `stop_to_alert_s` is the median seconds from the stop to the alert for lingers caught in time.
 4. Obstruction losses for bag and blocked walks are read from `nist/obstruction_losses.json`
    (committed, under 1 KB). To rebuild it from the raw data (see *Download NIST and VSC*):
    `python3 nist/obstruction_losses.py data/external/nist/BLE_RSSI_Data data/external/vsc nist/obstruction_losses.json`
@@ -151,7 +155,7 @@ calibration and all walks; blocked walk with B 0.5 m in front of the Pi (`BLOCK_
 - [x] T17: `compare_models.py` now runs simulated walks through `pi/canary_core.Tracker`, the
       Pi's own code, one snapshot per second like `canary.py record`. Before this, the old
       feature code disagreed with the Pi on whether the 3-second rule fires in 23% of seconds.
-- [ ] T18: `--thresh` sweep at 0.6 / 0.8 / 0.9, plus the rule's wait time at 1-6 s.
+- [x] T18: sweeps of the models' cutoff (`--thresholds`) and the rule's wait (`--rule-waits`), with a stop-to-alert column.
 - [ ] T22: set `--rate` from `packet_rate_hz` in the real walks.
 - [ ] T23: simulate about 300 walks and compare at `--sim-weight` 0.1 / 0.2 / 0.5.
 - [ ] Optional: also report TC4TL-style miss rate, false-alarm rate and nDCF.
