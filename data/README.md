@@ -13,6 +13,15 @@ Rule: **never commit recordings that contain anything sensitive** (other people'
 MAC addresses, locations). Ours only contain our own test phone's advertisement
 (company ID 0x058E, data CA01), so they **can** be committed.
 
+**Right now `data/runs/` holds 24 placeholder walks** (made by `scripts/make_placeholder_runs.py`,
+marked by the empty `data/runs/PLACEHOLDER` file) and `settings.json` holds placeholder calibration,
+so the pipeline can run before recording. To swap in the real walks, from the repo root:
+```
+rm data/runs/*.csv data/runs/PLACEHOLDER
+scp canary@canary.local:/home/canary/canary/data/runs/*.csv data/runs/
+scp canary@canary.local:/home/canary/canary/settings.json settings.json
+```
+
 ## data/external/: public datasets (not committed)
 Created by `scripts/get_mitre.sh`. Holds the cloned MITRE Range-Angle (Structured) repo
 and the generated `mitre_rssi.csv` (~117 MB, over GitHub's 100 MB limit). The NIST

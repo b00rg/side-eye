@@ -1,17 +1,17 @@
-"""Make 24 MOCK walks in the Pi's exact CSV format, so the results pipeline can run before the
-real walks exist. Output goes to data/mock/ (never data/runs/).
+"""Make 24 placeholder walks in the Pi's exact CSV format, so the results pipeline runs before the
+real walks exist. Writes them where the real ones go, so swapping later is just replacing files.
 
 Usage (from the repo root, after scripts/get_mitre.sh):
-  python3 scripts/make_mock_runs.py data/external/mitre_rssi.csv data/mock
+  python3 scripts/make_placeholder_runs.py data/external/mitre_rssi.csv
 
-Writes data/mock/settings.json (mock calibration) and data/mock/runs/<time>-<type>.csv, one per
-walk, in the shuffled recording order from the run sheet: 8 linger, 8 passer, 4 far, 2 bag,
-2 blocked. Walks come from nist/simulate_walks.py at 1.35 readings/s (the scan check's rate) and
-are turned into rows by pi/canary_core.Tracker, exactly as `canary.py record` would. A walk the
-Pi would refuse to save (no rows, or a linger with no positive rows) is drawn again.
+Writes data/runs/<time>-<type>.csv (8 linger, 8 passer, 4 far, 2 bag, 2 blocked, in the run-sheet
+order), settings.json at the repo root, and an empty data/runs/PLACEHOLDER marker. While that marker
+exists, compare_models.py warns that the walks are placeholders. Walks come from
+nist/simulate_walks.py at 1.35 readings/s (the scan check's rate), turned into rows by
+pi/canary_core.Tracker as `canary.py record` would. A walk the Pi would refuse to save is redrawn.
 
-MOCK DATA: it comes from our own simulator, so Model 2 will look unrealistically good on it.
-Use it to check that everything runs, never as results.
+Swapping in the real walks: delete everything in data/runs/ (including PLACEHOLDER), copy the
+real CSVs in, and replace settings.json with the Pi's.
 """
 import json
 import os
@@ -28,19 +28,21 @@ from simulate_walks import LOSSES, fit_path_loss, load_losses, rssi_mean, simula
 ORDER = ["linger", "passer", "linger", "linger", "blocked", "bag", "linger", "passer", "linger", "linger",
          "far", "far", "passer", "passer", "passer", "passer", "passer", "far", "linger", "blocked",
          "bag", "far", "passer", "linger"]
-NEAR, FAR = -48.0, -58.0      # mock 2 m / 6 m medians (scan check read about -40 dBm at ~1 m)
+NEAR, FAR = -48.0, -58.0      # placeholder 2 m / 6 m medians (scan check read about -40 dBm at ~1 m)
 RATE, SEED = 1.35, 7
-START_CLOCK = 19 * 3600       # mock recording session starts 19:00:00
+START_CLOCK = 19 * 3600       # placeholder session starts 19:00:00
 START_MONO = 5000.0           # canary.py writes time.monotonic(); any start value works
 
 
 def main():
-    mitre_csv, out = sys.argv[1:3]
-    runs = os.path.join(out, "runs")
+    mitre_csv = sys.argv[1]
+    runs = os.path.join(ROOT, "data", "runs")
     os.makedirs(runs, exist_ok=True)
     cutoff = round((NEAR + FAR) / 2, 1)
-    with open(os.path.join(out, "settings.json"), "w") as f:
-        json.dump({"threshold_dbm": cutoff, "near_median": NEAR, "far_median": FAR, "_mock": True}, f, indent=2)
+    with open(os.path.join(ROOT, "settings.json"), "w") as f:
+        json.dump({"threshold_dbm": cutoff, "near_median": NEAR, "far_median": FAR}, f, indent=2)
+        f.write("\n")
+    open(os.path.join(runs, "PLACEHOLDER"), "w").close()
 
     df = pd.read_csv(mitre_csv)
     df = df[df.tx_android & (df.rssi < 0)]
@@ -68,7 +70,7 @@ def main():
         clock += 90                       # about one walk every 90 s
         mono += 90 + len(labels)
     counts = pd.Series(ORDER).value_counts().to_dict()
-    print(f"Wrote {len(ORDER)} mock walks to {runs} {counts}; mock cutoff {cutoff} dBm; "
+    print(f"Wrote {len(ORDER)} placeholder walks to {runs} {counts}; cutoff {cutoff} dBm; "
           f"{redraws} walks redrawn because the Pi would have refused them")
 
 
