@@ -1,5 +1,9 @@
 # Public datasets (re-downloaded by scripts/get_mitre.sh; mitre_rssi.csv is >100 MB)
 data/external/
+data/archive/
+
+# Pi calibration (device-specific)
+settings.json
 
 # Generated simulated walks
 nist/sim*/
@@ -10,6 +14,7 @@ comparison_results.csv
 
 # Python
 __pycache__/
+*.pyc
 .venv/
 
 # macOS
