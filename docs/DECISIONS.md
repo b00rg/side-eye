@@ -42,9 +42,10 @@ Status: agreed by Rachel (B); Lili (A) and Emma (C) to confirm before recording 
   The bag sits on a chair at 2 m, not worn.
 
 ## Simulation settings that follow from this
-- `BLOCK_DB`: from NIST, person 0.5 m from a device (about -10 dB at 2 m, drawn per walk
-  from the measured spread). See `nist/README.md`.
-- `BAG_DB`: bag on a chair, so small (about 0 to 3 dB), from VSC. See `nist/README.md`.
+- Blocked walks: loss from NIST, person 0.5 m from a device, 1-3 m (median 12.5 dB),
+  drawn per walk. See `nist/README.md`.
+- Bag walks: bag on a chair, so small: VSC purse vs ear at mirror rotations (median 3.8 dB),
+  drawn per walk. See `nist/README.md`.
 - Base signal and noise: MITRE Android recordings, matched to our Pi using our own 2 m and
   6 m calibration (which will be taken with the phone at the ear).
 

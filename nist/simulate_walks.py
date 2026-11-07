@@ -27,8 +27,18 @@ import pandas as pd
 
 NEAR_KEYS = ["near_median", "near_median_dbm", "median_2m"]
 FAR_KEYS = ["far_median", "far_median_dbm", "median_6m"]
-BLOCK_DB = 6.0   # placeholder body/obstruction loss; replace with the NIST person-between figure
-BAG_DB = 9.0     # placeholder bag loss; replace with NIST or a real bag walk
+BLOCK_DB = 6.0   # fallback only: used if nist/obstruction_losses.json is missing
+BAG_DB = 9.0     # fallback only
+LOSSES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "obstruction_losses.json")
+
+
+def load_losses(path):
+    """Measured losses (dB) per walk kind, from nist/obstruction_losses.py; constants if missing."""
+    if path and os.path.exists(path):
+        with open(path) as f:
+            d = json.load(f)
+        return {"bag": d["bag"], "blocked": d["blocked"]}, f"measured ({path})"
+    return {"bag": [BAG_DB], "blocked": [BLOCK_DB]}, "fallback constants"
 
 
 def pick(d, keys):
@@ -83,17 +93,15 @@ def path_static(rng, lo, hi):
 MIX = {"passer": 0.35, "linger": 0.35, "far": 0.1, "bag": 0.1, "blocked": 0.1}
 
 
-def simulate(df, A, n, a, b, kind, rng, rate):
+def simulate(df, A, n, a, b, kind, rng, rate, losses):
     if kind == "passer":
         d, y = path_passer(rng); extra = 0.0
     elif kind == "linger":
         d, y = path_linger(rng); extra = 0.0
     elif kind == "far":
         d, y = path_far(rng); extra = 0.0
-    elif kind == "bag":
-        d, y = path_static(rng, 1.5, 2.5); extra = BAG_DB
-    else:
-        d, y = path_static(rng, 1.5, 2.5); extra = BLOCK_DB
+    else:  # bag or blocked: one measured loss, drawn per walk
+        d, y = path_static(rng, 1.5, 2.5); extra = float(rng.choice(losses[kind]))
 
     # one real recording supplies the noise for this whole walk
     f = rng.choice(df.file.unique())
@@ -112,7 +120,7 @@ def simulate(df, A, n, a, b, kind, rng, rate):
     rssi = np.round(base + noise).astype(int)
     readings = pd.DataFrame({"t_s": t, "rssi": rssi, "true_d_m": np.repeat(d, rate)})
     labels = pd.DataFrame({"second": np.arange(len(d)), "label": y, "true_d_m": d})
-    return readings, labels, f
+    return readings, labels, f, extra
 
 
 def main():
@@ -121,6 +129,7 @@ def main():
     p.add_argument("--n", type=int, default=300)
     p.add_argument("--rate", type=int, default=8)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--losses", default=LOSSES, help="obstruction losses JSON from nist/obstruction_losses.py")
     args = p.parse_args()
 
     df = pd.read_csv(args.mitre_csv)
@@ -134,20 +143,22 @@ def main():
 
     os.makedirs(args.out_dir, exist_ok=True)
     rng = np.random.default_rng(args.seed)
+    losses, loss_src = load_losses(args.losses)
     kinds = rng.choice(list(MIX), size=args.n, p=list(MIX.values()))
     manifest = []
     for i, k in enumerate(kinds):
-        r, lab, src = simulate(df, A, n, a, b, k, rng, args.rate)
+        r, lab, src, extra = simulate(df, A, n, a, b, k, rng, args.rate, losses)
         name = f"sim_{i:04d}_{k}"
         r.to_csv(os.path.join(args.out_dir, name + "_readings.csv"), index=False)
         lab.to_csv(os.path.join(args.out_dir, name + "_labels.csv"), index=False)
-        manifest.append(dict(walk=name, kind=k, seconds=len(lab), positives=int(lab.label.sum()), mitre_file=src))
+        manifest.append(dict(walk=name, kind=k, seconds=len(lab), positives=int(lab.label.sum()), mitre_file=src, loss_db=extra))
     pd.DataFrame(manifest).to_csv(os.path.join(args.out_dir, "manifest.csv"), index=False)
 
-    info = dict(A=A, n=n, mitre_pred_2m=m2, mitre_pred_6m=m6, scale=a, shift=b,
+    info = dict(obstruction_losses=loss_src, A=A, n=n, mitre_pred_2m=m2, mitre_pred_6m=m6, scale=a, shift=b,
                 pi_near=near, pi_far=far, android_files=int(df.file.nunique()),
                 mitre_medians={str(k): float(v) for k, v in med.items()})
     json.dump(info, open(os.path.join(args.out_dir, "calibration.json"), "w"), indent=2)
+    print(f"obstruction losses: {loss_src}")
     print(f"path loss: A={A:.1f} dBm at 1 m, n={n:.2f}")
     print(f"MITRE 2 m {m2:.1f} -> Pi {near:.1f};  MITRE 6 m {m6:.1f} -> Pi {far:.1f}  (scale {a:.2f}, shift {b:.1f})")
     print(pd.DataFrame(manifest).kind.value_counts().to_string())
