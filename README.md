@@ -30,11 +30,11 @@ Because 24 walks is very little data, we also simulate thousands of walks from p
 |--------|------|--------|
 | Emma Burgess | Pi code: scanner, features, rule, model training, service, tests | `pi/` |
 | Rachel Ranjith | Public-data augmentation (MITRE + NIST), model comparison | `nist/` |
-| Lili Berengeur Jin | Pi code (with Emma Burgess) | `pi/` |
+| Lili Berenguer Jin | Pi code (with Emma Burgess) | `pi/` |
 
 ## Layout
 ```
-pi/        Raspberry Pi code (teammates; see pi/README.md)
+pi/        Raspberry Pi code: scanner, features, rule, training, service, tests
 nist/      public-data simulation and model comparison
 data/      real walks in data/runs/; public datasets in data/external/ (ignored)
 scripts/   setup helpers
@@ -47,13 +47,19 @@ pip install -r requirements.txt
 ```
 
 ## Running each part
-**Pi (`pi/`):** see `pi/README.md` once the code is committed.
+**Pi (`pi/`)**, from the repo root (full details in `pi/README.md`):
+```
+python3 pi/canary.py calibrate            # writes settings.json
+python3 pi/canary.py record linger        # one walk -> data/runs/
+python3 pi/train_model.py                 # trains model.joblib
+python3 pi/canary.py live                 # run the detector
+```
 
 **Public-data augmentation (`nist/`)**, from the repo root:
 ```
 scripts/get_mitre.sh                       # clone MITRE, build data/external/mitre_rssi.csv
-python3 nist/simulate_walks.py data/external/mitre_rssi.csv nist/settings.json nist/sim --n 300 --rate <Pi packets/s>
-python3 nist/compare_models.py --sim nist/sim --real data/runs --cutoff <cutoff>
+python3 nist/simulate_walks.py data/external/mitre_rssi.csv settings.json nist/sim --n 300 --rate <Pi packets/s>
+python3 nist/compare_models.py --sim nist/sim --real data/runs --cutoff <threshold_dbm from settings.json>
 ```
 Details and TODOs in `nist/README.md`.
 

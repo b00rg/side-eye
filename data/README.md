@@ -1,13 +1,13 @@
 # data/
 
 ## data/runs/: real walks (committed)
-Put the 24 real walk CSVs recorded on the Pi (`canary.py record`) here:
+Put the 24 real walk CSVs recorded on the Pi (`python3 pi/canary.py record <scenario>`) here:
 8 linger, 8 passer, 4 far, 2 bag, 2 blocked.
 
 - One CSV per walk, one row per second, with at least:
   `mean_rssi, var_rssi, slope, dwell_s, close_streak_s, label` (plus `packet_rate_hz`).
 - The filename must contain the walk kind (`passer`, `linger`, `far`, `bag`, `blocked`),
-  e.g. `linger_03.csv`. `nist/compare_models.py` uses this to build the folds.
+  `canary.py` names them `<timestamp>-<scenario>.csv`. `nist/compare_models.py` uses this to build the folds.
 
 Rule: **never commit recordings that contain anything sensitive** (other people's devices,
 MAC addresses, locations). Ours only contain our own test phone's advertisement
