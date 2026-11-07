@@ -6,6 +6,7 @@
 #   REGION=europe-west2        DEBIAN_RELEASE=bookworm (match the Pi: cat /etc/os-release)
 #   BUCKET=<project>-side-eye-models
 #   RETRAIN_ARGS=--tiger-weight,0.5,--no-demo   (comma-separated, passed to pi/retrain.py)
+#   SIDE_EYE_ENV=<file with TIMESCALE_SERVICE_URL> (default .env in the repo root)
 #   SCHEDULE=off (default: nightly retrain paused, no compute used) | on (retrain at 03:00 UTC)
 set -eu
 PROJECT=${1:?usage: gcp/deploy.sh <project-id>}
@@ -22,8 +23,9 @@ PI_SA=side-eye-pi@$PROJECT.iam.gserviceaccount.com
 IMAGE=$REGION-docker.pkg.dev/$PROJECT/$REPO/retrain:latest
 cd "$(dirname "$0")/.."
 
-URL=$(sed -n 's/^TIMESCALE_SERVICE_URL=//p' .env 2>/dev/null | tr -d "'\"")
-[ -n "$URL" ] || { echo "No TIMESCALE_SERVICE_URL in .env (repo root)." >&2; exit 1; }
+ENV_FILE=${SIDE_EYE_ENV:-.env}
+URL=$(sed -n 's/^TIMESCALE_SERVICE_URL=//p' "$ENV_FILE" 2>/dev/null | tr -d "'\"")
+[ -n "$URL" ] || { echo "No TIMESCALE_SERVICE_URL in $ENV_FILE." >&2; exit 1; }
 g() { gcloud --project "$PROJECT" --quiet "$@"; }
 exists() { g "$@" >/dev/null 2>&1; }
 

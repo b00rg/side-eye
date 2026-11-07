@@ -27,6 +27,8 @@ python3 pi/canary.py live [--no-motor]    # 3 s rule drives the motor; ML score 
 ```
 cd pi && python3 -m unittest discover -s tests          # everything offline, ~3 s
 cd pi && SIDE_EYE_TIGER_TESTS=1 python3 -m unittest tests.test_tiger_integration -v   # real Tiger Data
+cd pi && SIDE_EYE_DOCKER_TESTS=1 python3 -m unittest tests.test_gcp -v              # build the retrain image
+cd pi && SIDE_EYE_GCP_TESTS=1 SIDE_EYE_GCP_PROJECT=side-eye-514022 SIDE_EYE_GCP_REGION=europe-west4 python3 -m unittest tests.test_gcp -v   # read-only, real project
 ```
 | File | Covers |
 |---|---|
@@ -35,6 +37,7 @@ cd pi && SIDE_EYE_TIGER_TESTS=1 python3 -m unittest tests.test_tiger_integration
 | `test_alarm_store.py` | rows, privacy (no MAC, rotating refs), env loading, upload thread, offline buffer |
 | `test_live_loop.py` | the real `live` loop in simulated time: 3 s rule, 15 s cooldown, button TP/FP/FN, flags, cleanup |
 | `test_retrain.py` | Tiger events -> labelled rows, walks+Tiger training, model + metadata written |
+| `test_gcp.py` | `gcp/` with a fake `gcloud`: schedule off by default, secret via stdin only, private bucket, job wiring, `.gcloudignore` keeps secrets out, `fetch_model.sh` install/refuse/rollback. Opt-in: Docker build, read-only check of the real project |
 | `test_schema.py` | code and `scripts/tiger_schema.sql` agree |
 | `test_tiger_integration.py` | opt-in: schema, policies, CHECK rule, uploads, buffer replay, `annotate.py` (cleans up after itself) |
 
