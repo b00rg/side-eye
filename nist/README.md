@@ -145,7 +145,9 @@ calibration and all walks; blocked walk with B 0.5 m in front of the Pi (`BLOCK_
       drawn per walk in `simulate_walks.py`; manifest records each walk's `loss_db`.
 - [x] T21: NIST spread figure for the slides (`nist/plot_spread.py` -> `nist/nist_spread.png`).
 - [ ] T16: use `balanced_group_folds()` from `pi/train_model.py` in `compare_models.py`.
-- [ ] T17: replace `features()` in `compare_models.py` with `pi/canary_core.Tracker`.
+- [x] T17: `compare_models.py` now runs simulated walks through `pi/canary_core.Tracker`, the
+      Pi's own code, one snapshot per second like `canary.py record`. Before this, the old
+      feature code disagreed with the Pi on whether the 3-second rule fires in 23% of seconds.
 - [ ] T18: `--thresh` sweep at 0.6 / 0.8 / 0.9, plus the rule's wait time at 1-6 s.
 - [ ] T22: set `--rate` from `packet_rate_hz` in the real walks.
 - [ ] T23: simulate about 300 walks and compare at `--sim-weight` 0.1 / 0.2 / 0.5.
