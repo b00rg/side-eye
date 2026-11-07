@@ -44,6 +44,14 @@ SCHEDULE=on gcp/deploy.sh <project-id>      # optional: nightly at 03:00 UTC
 ```
 The log shows walks-only vs walks + Tiger vs the 3 s rule on the same held-out walks.
 
+### Testing with dummy data
+```
+python3 scripts/dummy_events.py add       # 60 labelled events in Tiger, device_id = 'dummy-data'
+gcloud run jobs execute side-eye-retrain --region europe-west4 --wait
+gcloud storage cat gs://<bucket>/models/latest.json
+python3 scripts/dummy_events.py remove    # delete them again (annotate.py's report counts them meanwhile)
+```
+
 ## 4. The Pi
 ```
 # Mac: key that can only read the bucket
