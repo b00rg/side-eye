@@ -3,8 +3,13 @@
 Everything below has been run end to end on the placeholder walks. With real walks the commands
 are the same; only the numbers change.
 
+## 0. Transmitter
+Power the UNO Q (`zeus`) from a power bank; it broadcasts by itself after ~25 s
+(`transmitter/README.md`). Check from the Pi: `python3 canary.py scan --seconds 20` should give
+~150+ at 1 m. Turn off any phone running nRF Connect so only zeus broadcasts.
+
 ## 1. Record (on the Pi)
-Calibrate with the phone at the right ear, then record the 24 walks in the run-sheet order
+Calibrate with zeus worn at head height, then record the 24 walks in the run-sheet order
 (see `docs/DECISIONS.md` for the walk rules). Then: `cp settings.json settings_room1.json`.
 
 ## 2. Bring the walks to the Mac (repo root)

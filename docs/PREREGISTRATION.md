@@ -86,3 +86,12 @@ the Rule stays and we say so. Models 1 and 2 are still reported in full; H1-H3 a
 difference, and with 24 walks such differences are mostly noise. Committing to Model 3 in
 advance avoids choosing the deployed model on noise, and Model 3 is the model the public-data
 idea is about.
+
+## Amendment 2: the transmitter is an Arduino UNO Q, not the Android phone
+
+Added **before any real walk was recorded**. Scan checks showed the Android phone reached the Pi
+only ~2 times per second (41 in 20 s) despite a 100 ms setting, and calibration with the phone at
+the ear gave ~0.8 per second, too few for the Pi's 5-readings-in-5-s row rule. An Arduino UNO Q
+broadcasting the same packet (0x058E / CA01) every 20 ms reached ~9 per second (184 in 20 s) on a
+power bank. Calibration and all 24 walks use the UNO Q, worn at head height (`transmitter/README.md`).
+Everything else in this pre-registration is unchanged.

@@ -43,6 +43,13 @@ Status: agreed by Rachel (B); Lili (A) and Emma (C) to confirm before recording 
 - Matching on company ID can also catch other Meta devices (e.g. VR headsets). It's a known
   false-positive source; mention it as a limitation.
 
+## Transmitter (stand-in glasses)
+- **Arduino UNO Q** (`zeus`) broadcasting 0x058E / CA01 every 20 ms, starting by itself on power-up
+  (`transmitter/README.md`). Replaces the Android phone: ~9 readings/s at the Pi vs ~2, and no
+  Android throttling or screen locks. Pre-registration Amendment 2.
+- **Worn at head height** (cap or headband, power bank in a pocket), the same way for calibration
+  and every walk. This replaces "phone held at the right ear" below.
+
 ## Walk protocol (calibration and all 24 walks)
 - **Phone held at the right ear,** where glasses would sit, for calibration and every walk.
   This replaces the guide's "right hand at chest height". Hold it the same way every time.

@@ -25,7 +25,14 @@ def threshold():
     return json.loads(SETTINGS.read_text())["threshold_dbm"]
 
 
+SCANNER = "bleak"   # "hci" with `canary.py --hci ...`: raw HCI, every advert (see hci_scan.py)
+
+
 def new_scanner(callback):
+    if SCANNER == "hci":
+        from hci_scan import HciScanner
+
+        return HciScanner(callback)
     from bleak import BleakScanner
 
     # BlueZ's DuplicateData filter helps, but callbacks are NOT a raw packet feed.
@@ -65,15 +72,20 @@ class Session:
 
 async def scan(seconds, demo_only):
     session = Session(demo_only)
-    async with new_scanner(session.callback):
-        previous = 0
+    async with new_scanner(session.callback) as scanner:
+        previous, previous_all = 0, 0
         for elapsed in range(1, seconds + 1):
             await asyncio.sleep(1)
             fresh = session.count - previous
             previous = session.count
             candidates = list(session.trackers.values())
             newest = max((t.samples[-1].raw for t in candidates if t.samples), default=None)
-            print(f"second={elapsed:02d} matching_callbacks={fresh} latest_rssi={newest}", flush=True)
+            line = f"second={elapsed:02d} matching_callbacks={fresh} latest_rssi={newest}"
+            total = getattr(scanner, "total_adverts", None)   # --hci only: adverts from every device
+            if total is not None:
+                line += f" all_devices={total - previous_all}"
+                previous_all = total
+            print(line, flush=True)
     print(f"Total matching callbacks in {seconds} s: {session.count}")
 
 
@@ -336,6 +348,8 @@ async def live(with_motor, use_model=False, feedback_on=True, retrain_every=RETR
 
 def main():
     parser = argparse.ArgumentParser(description="Side Eye Pi 4 demo")
+    parser.add_argument("--hci", action="store_true",
+                        help="scan via raw HCI: every advert, not BlueZ's thinned updates (needs sudo or setcap)")
     commands = parser.add_subparsers(dest="command", required=True)
     scan_parser = commands.add_parser("scan", help="count matching BLE callbacks")
     scan_parser.add_argument("--seconds", type=int, default=20)
@@ -351,6 +365,9 @@ def main():
     live_parser.add_argument("--no-feedback", action="store_true",
                              help="don't record feedback presses or retrain")
     args = parser.parse_args()
+    global SCANNER
+    if args.hci:
+        SCANNER = "hci"
     if args.command == "scan":
         asyncio.run(scan(args.seconds, not args.real))
     elif args.command == "calibrate":
@@ -364,4 +381,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nStopped.")

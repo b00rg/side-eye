@@ -59,7 +59,11 @@ class FeedbackStore:
 
 def load_rows(path):
     """(x, y, weights) for training, from a feedback.db file."""
-    rows = FeedbackStore(path).rows()
+    store = FeedbackStore(path)
+    try:
+        rows = store.rows()
+    finally:
+        store.db.close()
     return ([list(r[:4]) for r in rows], [int(r[4]) for r in rows], [float(r[5]) for r in rows])
 
 
