@@ -32,6 +32,9 @@ Run every command from the repo root.
 
 `sim_check.png` is a visual check of simulated walks.
 
+**Slide figure (T21):** `nist/nist_spread.png`, rebuilt with
+`python3 nist/plot_spread.py data/external/nist/BLE_RSSI_Data nist/nist_spread.png`.
+
 ## Data sources
 
 | Dataset | What we use it for | Status | Get it |
@@ -94,6 +97,32 @@ come from `nist/obstruction_losses.py` (see *Used by the simulation*).
   the Pi. A bag on a chair with nothing in the way should be closer to 0 to 3 dB.
 - **Caveat:** VSC has no in-hand baseline, so "ear" stands in for an unobstructed phone.
 
+### NIST: why one threshold isn't enough (slide figure, `nist/nist_spread.png`)
+- All clear-path readings from LOS rooms 1-5 (40,848 readings, 18 distances, 0.5 to 20 m).
+- Medians: 2 m = -40 dBm, 6 m = -47 dBm, only 7 dB apart, while each distance's middle 80%
+  spans about 20 to 30 dB.
+- A single cutoff midway between them (-43.5 dBm, the same rule as `calibrate`) puts
+  **37% of single 2 m readings on the "far" side and 37% of 6 m readings on the "near" side.**
+- That's the case for using several seconds of signal (features over a window, the 3-second
+  rule, the model) instead of any one reading.
+
+### Why wait 3 seconds? (NIST can't pick the number; walking speed can)
+- **Averaging longer barely improves the distance call in NIST.** Using NIST's 2 m and 6 m
+  recordings, a per-room cutoff (like our calibration) and only setups that pass our 6 dB
+  gate (8 of 16), the share of wrong near/far calls is 26% from one reading and still 24%
+  after averaging 20 s. Across all rooms with one shared cutoff it's 37% and gets *worse*
+  with longer windows, because each room sits at its own level.
+- **Why:** NIST logged under 1 reading/s (3 s is about 2 readings), and most of its variation
+  is slow (reflections, advertising channel), not second-to-second jitter. So the 3-second
+  wait isn't there to make the distance estimate accurate.
+- **What justifies 3 s is how long a walk-past stays close.** Walking 1.2 m/s with the closest
+  approach at 1.5 m, someone is inside 2 m for about 2.2 s; a slow walker (1.0 m/s) passing at
+  1.2 m, about 3.2 s. So 3 s is roughly the shortest wait that lets ordinary walk-pasts
+  through. Under 3 s near you: probably walking by. Over 3 s: they slowed or stopped. This is
+  the "too long" in "too close for too long".
+- **The real test is on our walks** (added to T18): rerun the rule with the wait set to
+  1-6 s and count lingers caught, walk-pasts wrongly buzzed and time to buzz.
+
 ### Used by the simulation (`nist/obstruction_losses.json`)
 | Walk | Source and method | Loss (dB to subtract) |
 |---|---|---|
@@ -114,10 +143,10 @@ calibration and all walks; blocked walk with B 0.5 m in front of the Pi (`BLOCK_
 - [x] T19: download NIST, read README and report, confirm format.
 - [x] T20: blocked and bag losses measured from NIST and VSC (`nist/obstruction_losses.py`),
       drawn per walk in `simulate_walks.py`; manifest records each walk's `loss_db`.
-- [ ] T21: NIST spread figure (RSSI spread per distance) for the slides.
+- [x] T21: NIST spread figure for the slides (`nist/plot_spread.py` -> `nist/nist_spread.png`).
 - [ ] T16: use `balanced_group_folds()` from `pi/train_model.py` in `compare_models.py`.
 - [ ] T17: replace `features()` in `compare_models.py` with `pi/canary_core.Tracker`.
-- [ ] T18: `--thresh` sweep at 0.6 / 0.8 / 0.9.
+- [ ] T18: `--thresh` sweep at 0.6 / 0.8 / 0.9, plus the rule's wait time at 1-6 s.
 - [ ] T22: set `--rate` from `packet_rate_hz` in the real walks.
 - [ ] T23: simulate about 300 walks and compare at `--sim-weight` 0.1 / 0.2 / 0.5.
 - [ ] Optional: also report TC4TL-style miss rate, false-alarm rate and nDCF.
