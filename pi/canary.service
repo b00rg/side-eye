@@ -1,0 +1,18 @@
+# Side Eye live detector. Assumes the repo is cloned to /home/canary/side-eye
+# and `python3 pi/canary.py calibrate` has written /home/canary/side-eye/settings.json.
+# Install:  sudo cp pi/canary.service /etc/systemd/system/ && sudo systemctl enable --now canary
+[Unit]
+Description=Side Eye smart-glasses detector
+After=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+Type=simple
+User=canary
+WorkingDirectory=/home/canary/side-eye
+ExecStart=/usr/bin/python3 /home/canary/side-eye/pi/canary.py live
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,4 +1,4 @@
-"""Canary CLI. Run `python3 canary.py --help` on the Raspberry Pi."""
+"""Canary CLI. Run `python3 pi/canary.py --help` on the Raspberry Pi."""
 
 import argparse
 import asyncio
@@ -12,14 +12,14 @@ from pathlib import Path
 from canary_core import MODEL_COLUMNS, Tracker, signature
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent  # repo root: settings.json, data/runs/, model.joblib
 SETTINGS = ROOT / "settings.json"
 RUNS = ROOT / "data" / "runs"
 
 
 def threshold():
     if not SETTINGS.exists():
-        raise SystemExit("Missing settings.json. Complete `python3 canary.py calibrate` first.")
+        raise SystemExit("Missing settings.json. Run `python3 pi/canary.py calibrate` first.")
     return json.loads(SETTINGS.read_text())["threshold_dbm"]
 
 
@@ -245,7 +245,7 @@ async def live(with_motor):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Project Canary Pi 4 demo")
+    parser = argparse.ArgumentParser(description="Side Eye Pi 4 demo")
     commands = parser.add_subparsers(dest="command", required=True)
     scan_parser = commands.add_parser("scan", help="count matching BLE callbacks")
     scan_parser.add_argument("--seconds", type=int, default=20)

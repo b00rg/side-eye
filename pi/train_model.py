@@ -16,7 +16,7 @@ from sklearn.metrics import precision_score, recall_score
 from canary_core import MODEL_COLUMNS
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent  # repo root: settings.json, data/runs/, model.joblib
 
 
 def load_runs():
