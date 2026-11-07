@@ -32,6 +32,9 @@ Run every command from the repo root.
 
 `sim_check.png` is a visual check of simulated walks.
 
+**Slide figure (T21):** `nist/nist_spread.png`, rebuilt with
+`python3 nist/plot_spread.py data/external/nist/BLE_RSSI_Data nist/nist_spread.png`.
+
 ## Data sources
 
 | Dataset | What we use it for | Status | Get it |
@@ -94,6 +97,15 @@ come from `nist/obstruction_losses.py` (see *Used by the simulation*).
   the Pi. A bag on a chair with nothing in the way should be closer to 0 to 3 dB.
 - **Caveat:** VSC has no in-hand baseline, so "ear" stands in for an unobstructed phone.
 
+### NIST: why one threshold isn't enough (slide figure, `nist/nist_spread.png`)
+- All clear-path readings from LOS rooms 1-5 (40,848 readings, 18 distances, 0.5 to 20 m).
+- Medians: 2 m = -40 dBm, 6 m = -47 dBm, only 7 dB apart, while each distance's middle 80%
+  spans about 20 to 30 dB.
+- A single cutoff midway between them (-43.5 dBm, the same rule as `calibrate`) puts
+  **37% of single 2 m readings on the "far" side and 37% of 6 m readings on the "near" side.**
+- That's the case for using several seconds of signal (features over a window, the 3-second
+  rule, the model) instead of any one reading.
+
 ### Used by the simulation (`nist/obstruction_losses.json`)
 | Walk | Source and method | Loss (dB to subtract) |
 |---|---|---|
@@ -114,7 +126,7 @@ calibration and all walks; blocked walk with B 0.5 m in front of the Pi (`BLOCK_
 - [x] T19: download NIST, read README and report, confirm format.
 - [x] T20: blocked and bag losses measured from NIST and VSC (`nist/obstruction_losses.py`),
       drawn per walk in `simulate_walks.py`; manifest records each walk's `loss_db`.
-- [ ] T21: NIST spread figure (RSSI spread per distance) for the slides.
+- [x] T21: NIST spread figure for the slides (`nist/plot_spread.py` -> `nist/nist_spread.png`).
 - [ ] T16: use `balanced_group_folds()` from `pi/train_model.py` in `compare_models.py`.
 - [ ] T17: replace `features()` in `compare_models.py` with `pi/canary_core.Tracker`.
 - [ ] T18: `--thresh` sweep at 0.6 / 0.8 / 0.9.
