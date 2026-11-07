@@ -19,3 +19,5 @@ __pycache__/
 
 # macOS
 .DS_Store
+rule_wait_sweep.csv
+threshold_sweep.csv
