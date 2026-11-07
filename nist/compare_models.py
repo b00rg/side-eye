@@ -59,9 +59,17 @@ def load_sim(sim_dir, cutoff):
         name = os.path.basename(lab_path).replace("_labels.csv", "")
         rd = pd.read_csv(lab_path.replace("_labels.csv", "_readings.csv"))
         f = features(rd, pd.read_csv(lab_path), cutoff)
+        if f.empty:   # the Pi would have written no rows (too few readings), so skip the walk
+            continue
         f["walk"] = name; f["kind"] = name.split("_")[-1]
         walks.append(f)
-    return pd.concat(walks, ignore_index=True)
+    total = len(glob.glob(os.path.join(sim_dir, "*_labels.csv")))
+    if len(walks) < total:
+        print(f"Note: {total - len(walks)} of {total} simulated walks produced no rows "
+              "(too few readings for the Pi's 5-in-5-s check) and were skipped.")
+    out = pd.concat(walks, ignore_index=True)
+    out["label"] = out.label.astype(int)
+    return out
 
 
 def load_real(real_dir):

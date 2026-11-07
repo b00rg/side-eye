@@ -5,7 +5,9 @@ Usage:
 
   mitre_rssi.csv  output of parse_mitre.py
   settings.json   the Pi's calibration file (needs your 2 m and 6 m medians, see NEAR_KEYS/FAR_KEYS)
-  --rate          readings per second the Pi actually sees (check packet_rate_hz in your real CSVs)
+  --rate          mean readings per second the Pi actually sees (median packet_rate_hz of the real
+                  walks). A whole number gives evenly spaced readings; a decimal (e.g. 1.35) gives a
+                  random Poisson number per second, which matches the Pi's bursty Bluetooth callbacks.
 
 How it works
   1. Keep only walks where the transmitter was an Android phone running nRF Connect,
@@ -108,17 +110,28 @@ def simulate(df, A, n, a, b, kind, rng, rate, losses):
     rec = df[df.file == f].sort_values("t_s")
     resid = (rec.rssi - rec.groupby("range_m").rssi.transform("median")).values
     resid = np.clip(resid, -15, 15)   # a few MITRE readings jump 30+ dB; treat as outliers
-    need = len(d) * rate
+    # readings per second: exactly `rate` evenly spaced if it's a whole number (as before);
+    # otherwise bursty like the real Pi: Poisson(rate) readings per second at random moments
+    if float(rate).is_integer():
+        counts = np.full(len(d), int(rate))
+        offsets = np.concatenate([np.arange(c) / c for c in counts]) if len(d) else np.array([])
+    else:
+        counts = rng.poisson(rate, len(d))
+        offsets = rng.uniform(0, 1, counts.sum())
+    sec = np.repeat(np.arange(len(d)), counts)
+    need = len(sec)
     reps = int(np.ceil(need / len(resid))) + 1
     noise = np.tile(resid, reps)
     off = rng.integers(0, len(resid))
     noise = noise[off: off + need]
 
-    t = np.repeat(np.arange(len(d)), rate) + np.tile(np.arange(rate) / rate, len(d))
+    t = sec + offsets
+    order = np.argsort(t, kind="stable")
+    t, dist = t[order], d[sec][order]
     # calibrate only the distance curve; obstruction loss and real noise stay in dB
-    base = a * rssi_mean(np.repeat(d, rate), A, n) + b - extra
+    base = a * rssi_mean(dist, A, n) + b - extra
     rssi = np.round(base + noise).astype(int)
-    readings = pd.DataFrame({"t_s": t, "rssi": rssi, "true_d_m": np.repeat(d, rate)})
+    readings = pd.DataFrame({"t_s": t, "rssi": rssi, "true_d_m": dist})
     labels = pd.DataFrame({"second": np.arange(len(d)), "label": y, "true_d_m": d})
     return readings, labels, f, extra
 
@@ -127,7 +140,8 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("mitre_csv"); p.add_argument("settings"); p.add_argument("out_dir")
     p.add_argument("--n", type=int, default=300)
-    p.add_argument("--rate", type=int, default=8)
+    p.add_argument("--rate", type=float, default=8,
+                   help="mean readings per second; use the median packet_rate_hz of the real walks (decimals ok)")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--losses", default=LOSSES, help="obstruction losses JSON from nist/obstruction_losses.py")
     args = p.parse_args()

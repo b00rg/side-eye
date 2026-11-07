@@ -156,7 +156,9 @@ calibration and all walks; blocked walk with B 0.5 m in front of the Pi (`BLOCK_
       Pi's own code, one snapshot per second like `canary.py record`. Before this, the old
       feature code disagreed with the Pi on whether the 3-second rule fires in 23% of seconds.
 - [x] T18: sweeps of the models' cutoff (`--thresholds`) and the rule's wait (`--rule-waits`), with a stop-to-alert column.
-- [ ] T22: set `--rate` from `packet_rate_hz` in the real walks.
+- [ ] T22: set `--rate` from `packet_rate_hz` in the real walks. Decimals now work (e.g. `--rate 1.35`):
+      a decimal rate gives a random (Poisson) number of readings per second, like the Pi's bursty
+      callbacks. Scan check (T7) at ~1 m: 27 callbacks in 20 s = 1.35/s, 30% of seconds empty.
 - [ ] T23: simulate about 300 walks and compare at `--sim-weight` 0.1 / 0.2 / 0.5.
 - [ ] Optional: also report TC4TL-style miss rate, false-alarm rate and nDCF.
 - [x] Check `settings.json` key names match `NEAR_KEYS` / `FAR_KEYS`
