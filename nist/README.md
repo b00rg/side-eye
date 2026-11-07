@@ -119,11 +119,14 @@ come from `nist/obstruction_losses.py` (see *Used by the simulation*).
 - **Why:** NIST logged under 1 reading/s (3 s is about 2 readings), and most of its variation
   is slow (reflections, advertising channel), not second-to-second jitter. So the 3-second
   wait isn't there to make the distance estimate accurate.
-- **What justifies 3 s is how long a walk-past stays close.** Walking 1.2 m/s with the closest
-  approach at 1.5 m, someone is inside 2 m for about 2.2 s; a slow walker (1.0 m/s) passing at
-  1.2 m, about 3.2 s. So 3 s is roughly the shortest wait that lets ordinary walk-pasts
-  through. Under 3 s near you: probably walking by. Over 3 s: they slowed or stopped. This is
-  the "too long" in "too close for too long".
+- **The wait has to cover how long a walk-past stays on the "near" side of the cutoff.**
+  Correction to an earlier version of this note, which assumed "near" ends at 2 m: calibration
+  puts the cutoff midway (in dB) between the 2 m and 6 m medians, which is about **3.5 m**
+  (the geometric mean, sqrt(2 x 6)). Walking 1.2 m/s with the closest approach at 1.5 m,
+  someone is inside 3.5 m for about **5.2 s** (6.2 s at 1.0 m/s). So with a clean signal a 3 s
+  rule buzzes at most walk-pasts, and at lingerers before they stop. On the working-case
+  placeholder walks the rule only becomes good at 5-6 s. Whether 3 s holds up is for the
+  rule-wait sweep on the real walks to show.
 - **The real test is on our walks** (added to T18): rerun the rule with the wait set to
   1-6 s and count lingers caught, walk-pasts wrongly buzzed and time to buzz.
 

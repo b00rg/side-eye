@@ -1,5 +1,5 @@
 {
-  "threshold_dbm": -53.0,
-  "near_median": -48.0,
-  "far_median": -58.0
+  "threshold_dbm": -55.0,
+  "near_median": -45.0,
+  "far_median": -65.0
 }
