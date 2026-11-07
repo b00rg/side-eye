@@ -10,6 +10,8 @@ Wants=bluetooth.service
 Type=simple
 User=canary
 WorkingDirectory=/home/canary/side-eye
+# Tiger Data credentials for alarm upload (optional: '-' means start anyway if missing).
+EnvironmentFile=-/home/canary/side-eye/.env
 ExecStart=/usr/bin/python3 /home/canary/side-eye/pi/canary.py live
 Restart=on-failure
 RestartSec=3

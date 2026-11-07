@@ -188,6 +188,18 @@ class Motor:
         finally:
             self.pin.off()
 
+    async def tick(self, count):
+        """Short confirmation ticks (60 ms), clearly different from the 250 ms alarm."""
+        try:
+            for i in range(count):
+                self.pin.on()
+                await asyncio.sleep(0.06)
+                self.pin.off()
+                if i < count - 1:
+                    await asyncio.sleep(0.15)
+        finally:
+            self.pin.off()
+
     def close(self):
         self.pin.off()
         self.pin.close()
@@ -202,17 +214,86 @@ async def motor_test():
         motor.close()
 
 
-async def live(with_motor):
+class WireButton:
+    """Two jumper wires: one on GPIO17 (pin 11), one on GND (pin 9). Touch the ends = press.
+
+    The Pi's internal pull-up holds GPIO17 high; touching it to ground pulls it low.
+    Never touch the GPIO wire to a 3.3 V or 5 V pin.
+    """
+
+    def __init__(self, pin=17):
+        from collections import deque
+        from gpiozero import Button
+
+        self.button = Button(pin, pull_up=True, bounce_time=0.05)
+        self.durations = deque()
+        self._down_at = None
+        self.button.when_pressed = self._pressed
+        self.button.when_released = self._released
+
+    def _pressed(self):
+        self._down_at = time.monotonic()
+
+    def _released(self):
+        if self._down_at is not None:
+            self.durations.append(time.monotonic() - self._down_at)
+            self._down_at = None
+
+    def presses(self):
+        while self.durations:
+            yield self.durations.popleft()
+
+    def close(self):
+        self.button.close()
+
+
+async def button_test(seconds):
+    from canary_core import HOLD_S
+
+    button = WireButton()
+    print(f"Touch the GPIO17 and GND wire ends together for {seconds} s. Hold >= {HOLD_S} s counts as a hold.")
+    end = time.monotonic() + seconds
+    try:
+        while time.monotonic() < end:
+            await asyncio.sleep(0.2)
+            for duration in button.presses():
+                print(f"{'HOLD' if duration >= HOLD_S else 'tap '}  {duration:.2f} s", flush=True)
+    finally:
+        button.close()
+
+
+async def live(with_motor, with_db=True, with_button=True):
+    from canary_core import classify_press
+
     limit = threshold()
     session = Session()
     motor = Motor() if with_motor else None
+    store = None
+    button = None
+    if with_db:
+        from alarm_store import AlarmStore, GlassesRef, make_alarm, make_missed
+
+        store = AlarmStore.from_env()
+        glasses_ref = GlassesRef()
+    if store and with_button:
+        try:
+            button = WireButton()
+            print("Wire button on GPIO17: touch after a buzz = glasses there, hold 2 s = false alarm, "
+                  "touch any other time = missed glasses.")
+        except Exception as error:  # no gpiozero / not a Pi
+            print(f"Wire button off ({type(error).__name__}).")
     last_alert = {}
+    last_buzz = None  # (row uploaded for the latest buzz, monotonic time), cleared once labelled
     model = None
     model_path = ROOT / "model.joblib"
     if model_path.exists():
         import joblib
 
         model = joblib.load(model_path)  # Load only the file created by this team's train_model.py.
+
+    def score(snap):
+        return float(model.predict_proba([snap.model_vector()])[0][1]) if model is not None else None
+
     print(f"Canary live: simulator packet only; threshold {limit} dBm; ML score is display-only.")
     try:
         async with new_scanner(session.callback):
@@ -220,21 +301,41 @@ async def live(with_motor):
                 await asyncio.sleep(1)
                 now = time.monotonic()
                 active = list(session.snapshots(now, limit))
+                if button:
+                    for duration in button.presses():
+                        since = now - last_buzz[1] if last_buzz else None
+                        kind = classify_press(duration, since)
+                        if kind in ("tp", "fp"):
+                            store.label(last_buzz[0], kind == "tp")
+                            last_buzz = None
+                            print("Labelled last buzz: " + ("TP, glasses were there" if kind == "tp" else "FP, false alarm"), flush=True)
+                        else:
+                            # Attach the strongest device the Pi is tracking right now, if any, so the miss is trainable.
+                            address, snap = max(active, key=lambda item: item[1].mean_rssi, default=(None, None))
+                            store.record(make_missed(
+                                glasses_ref, address, session.signatures.get(address) if address else None,
+                                snap, score(snap) if snap else None))
+                            print("Reported missed glasses (FN)" + (" with signal features" if snap else ""), flush=True)
+                        if motor:
+                            await motor.tick({"tp": 1, "fp": 2, "fn": 3}[kind])
                 if not active:
                     print("Waiting for simulator packet...", flush=True)
                     continue
                 for address, snap in active:
-                    probability = None
-                    if model is not None:
-                        probability = float(model.predict_proba([snap.model_vector()])[0][1])
+                    probability = score(snap)
                     eligible = snap.close_streak_s >= 3.0
                     fire = eligible and now - last_alert.get(address, -1e9) >= 15
                     if fire:
                         last_alert[address] = now
-                    score = f"{probability:.2f}" if probability is not None else "untrained"
+                        if store:
+                            # Only buzzes are uploaded; the address is hashed inside make_alarm.
+                            alarm = make_alarm(address, session.signatures.get(address), snap, probability, glasses_ref)
+                            store.record(alarm)
+                            last_buzz = (alarm, now)
+                    shown = f"{probability:.2f}" if probability is not None else "untrained"
                     print(
                         f"RSSI {snap.latest_rssi:4d} dBm | near streak {snap.close_streak_s:4.1f} s "
-                        f"| ML linger score {score} | {'ALERT' if fire else 'watching'}",
+                        f"| ML linger score {shown} | {'ALERT' if fire else 'watching'}",
                         flush=True,
                     )
                     if fire and motor:
@@ -242,6 +343,10 @@ async def live(with_motor):
     finally:
         if motor:
             motor.close()
+        if button:
+            button.close()
+        if store:
+            store.close()
 
 
 def main():
@@ -256,6 +361,10 @@ def main():
     commands.add_parser("motor-test", help="pulse the module connected to GPIO18")
     live_parser = commands.add_parser("live", help="run the haptic demo")
     live_parser.add_argument("--no-motor", action="store_true", help="terminal-only software check")
+    live_parser.add_argument("--no-db", action="store_true", help="don't upload alarms to Tiger Data")
+    live_parser.add_argument("--no-button", action="store_true", help="ignore the wire button on GPIO17")
+    button_parser = commands.add_parser("button-test", help="print taps/holds from the GPIO17 wire button")
+    button_parser.add_argument("--seconds", type=int, default=30)
     args = parser.parse_args()
     if args.command == "scan":
         asyncio.run(scan(args.seconds, not args.real))
@@ -266,7 +375,9 @@ def main():
     elif args.command == "motor-test":
         asyncio.run(motor_test())
     elif args.command == "live":
-        asyncio.run(live(not args.no_motor))
+        asyncio.run(live(not args.no_motor, not args.no_db, not args.no_button))
+    elif args.command == "button-test":
+        asyncio.run(button_test(args.seconds))
 
 
 if __name__ == "__main__":

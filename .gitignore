@@ -21,3 +21,10 @@ __pycache__/
 .DS_Store
 rule_wait_sweep.csv
 threshold_sweep.csv
+
+# Secrets (Tiger Data credentials)
+.env
+.env.*
+data/alarm_buffer.jsonl
+*.env
+tiger-cloud-*
