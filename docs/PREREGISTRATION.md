@@ -1,0 +1,72 @@
+# Pre-registration: does public data help Side Eye detect lingering?
+
+Written **before any real walk was recorded** (`data/runs/` empty). The commit time of this file
+on GitHub is the evidence. Anything decided after seeing results is labelled *exploratory*.
+
+## Question
+We have 24 real walks. We simulate extra walks from public contact-tracing Bluetooth data
+(MITRE Range-Angle, NIST BLE RSSI, MIT-LL VSC), calibrated to our Pi. Does adding them make the
+linger detector better on real walks it has never seen?
+
+## Data
+- **Real walks:** 24, recorded with `pi/canary.py record` as in `docs/DECISIONS.md`
+  (phone at the right ear; blocked: person 0.5 m in front of the Pi; bag on a chair at 2 m):
+  8 linger, 8 passer, 4 far, 2 bag, 2 blocked.
+- **Labels:** set automatically by the Enter presses during recording. In a linger walk,
+  seconds from 3 s after the stop until leaving are 1; everything else is 0. No hand edits.
+- **Exclusions:** only runs the recording script itself rejects (no rows, or a linger with no
+  positive rows) are re-recorded, as the build guide says. No walk is dropped or re-recorded
+  after any model has been run on it.
+- **Simulated walks:** `nist/simulate_walks.py --n 300 --seed 0`, using the real calibration
+  (`settings.json`) and `--rate` set to the median `packet_rate_hz` across the 24 real walks.
+
+## Methods compared (fixed settings)
+| Method | Trained on | Alert when |
+|---|---|---|
+| Rule | nothing | `close_streak_s` reaches **3 s** |
+| Model 1 | real walks in the training folds | score >= **0.8** on two rows <= 2.5 s apart |
+| Model 2 | simulated walks only | same |
+| Model 3 | simulated + real training walks, simulated rows weighted **0.2** | same |
+
+All models: `train_model.model_factory()` (random forest, 20 trees, depth 4, balanced, seed 42),
+features `mean_rssi, var_rssi, slope, dwell_s` from `pi/canary_core.py`.
+
+## Evaluation
+- **Folds:** `train_model.balanced_group_folds()`: 4 folds, each holds out 2 linger + 4 other
+  walks. Every real walk is tested exactly once, by models that never trained on it.
+- **Per-walk outcome (primary unit):** a walk is **correct** if
+  - linger: the first alert comes at or after the first positive second (not early, not missed);
+  - any other walk: no alert at all.
+
+## Hypotheses
+- **H1 (primary):** Model 3 gets more walks correct than Model 1.
+- **H2 (secondary):** Model 2 gets more walks correct than the Rule. ("Public data works on our
+  hardware at all.")
+- **H3 (secondary):** Model 1 gets more walks correct than the Rule. ("A model beats the rule.")
+
+## Statistics
+- **Primary measure:** walks correct out of 24, per method, with a 95% Wilson interval.
+  Also reported: lingers caught /8, false-alarm walks /16, early alerts.
+- **Paired test for each hypothesis:** exact McNemar test on the per-walk correct/incorrect
+  outcomes of the two methods (same 24 walks), one-sided in the hypothesised direction, alpha 0.05.
+  No correction for 3 tests; H2 and H3 are reported as secondary.
+- **Honest power statement:** with 24 walks, only large differences can reach significance
+  (McNemar needs at least 5 walks that one method gets right and the other wrong, all in one
+  direction). A non-significant result means "can't tell apart with this data", not "equal".
+
+## Decisions fixed in advance
+- **What drives the motor (T25):** a model replaces the rule only if it gets **more walks
+  correct** than the Rule **and** has **no more false-alarm walks**. Otherwise the rule stays,
+  and we say so in the pitch.
+- **What we report:** all four methods, whatever the result, including the bag walks (expected
+  to fail: a bag barely weakens the signal).
+
+## Exploratory (decided now, reported as exploratory)
+- Rule wait 1-6 s; model cutoff 0.6 / 0.8 / 0.9 (`compare_models.py` sweeps).
+- Sim weight 0.1 / 0.5; number of simulated walks; ablations of each public-data ingredient.
+- Fake-vs-real check: can a classifier tell simulated from real rows?
+- ROC curves and TC4TL-style miss / false-alarm / nDCF.
+
+## Known limits
+One room, one phone, a phone standing in for glasses, and detection of switched-on glasses
+rather than recording (see `docs/DECISIONS.md`).
