@@ -166,6 +166,10 @@ calibration and all walks; blocked walk with B 0.5 m in front of the Pi (`BLOCK_
 - [x] Pre-registered measures (`docs/PREREGISTRATION.md`): walks correct /24 with a 95% Wilson
       interval in the main table, and exact one-sided McNemar tests for H1-H3
       (`hypothesis_tests.csv`).
+- [x] Fake-vs-real check (`nist/sim_vs_real.py --sim nist/sim --real data/runs --cutoff <dBm>`):
+      AUC of a classifier telling simulated from real rows on held-out walks (0.5 = realistic),
+      per-input AUC, and medians by walk type. Validated: 0.47 on fake-vs-fake, 0.82 with a
+      6 dB shift planted in `mean_rssi`, which it flags.
 - [ ] Optional: also report TC4TL-style miss rate, false-alarm rate and nDCF.
 - [x] Check `settings.json` key names match `NEAR_KEYS` / `FAR_KEYS`
       (`calibrate` writes `near_median` / `far_median`).
