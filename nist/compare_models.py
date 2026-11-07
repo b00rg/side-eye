@@ -17,6 +17,7 @@ Simulated walks are only ever used for training, never for testing.
 import argparse, glob, os, sys
 import numpy as np
 import pandas as pd
+from scipy.stats import binomtest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pi"))
 from canary_core import MODEL_COLUMNS, Tracker  # noqa: E402  (the Pi's feature code)
@@ -98,8 +99,8 @@ def score_walks(test, thresh=THRESH, rule_wait=None):
     """Score every walk in `test`. rule_wait=None scores the model column `_score` at `thresh`;
     otherwise scores the rule: alert once close_streak_s reaches rule_wait seconds."""
     out = dict(linger_detected=0, linger_total=0, false_alarm_walks=0, negative_walks=0, early_alerts=0,
-               tp=0, fp=0, fn=0, delays=[])
-    for _, g in test.groupby("walk", sort=False):
+               tp=0, fp=0, fn=0, delays=[], correct={})
+    for walk, g in test.groupby("walk", sort=False):
         t = (g["t"] - g["t"].iloc[0]).to_numpy(float) if "t" in g else np.arange(len(g), dtype=float)
         y = g.label.to_numpy()
         if rule_wait is not None:
@@ -115,6 +116,7 @@ def score_walks(test, thresh=THRESH, rule_wait=None):
         if g.kind.iloc[0] == "linger":
             out["linger_total"] += 1
             pos = np.flatnonzero(y == 1)
+            out["correct"][walk] = bool(first is not None and len(pos) and first >= t[pos[0]])
             if first is not None and len(pos):
                 if first < t[pos[0]]:
                     out["early_alerts"] += 1
@@ -123,6 +125,7 @@ def score_walks(test, thresh=THRESH, rule_wait=None):
                     out["delays"].append(first - (t[pos[0]] - 3))  # labels start 3 s after the stop
         else:
             out["negative_walks"] += 1
+            out["correct"][walk] = first is None
             if first is not None:
                 out["false_alarm_walks"] += 1
     return out
@@ -136,16 +139,48 @@ def fit(train, weights=None):
 
 
 def summarise(name, rs, **extra):
-    tot = {k: sum(r[k] for r in rs) for k in rs[0] if k != "delays"}
+    tot = {k: sum(r[k] for r in rs) for k in rs[0] if k not in ("delays", "correct")}
+    correct = [c for r in rs for c in r["correct"].values()]
+    k, n = sum(correct), len(correct)
+    lo, hi = wilson(k, n)
     delays = [d for r in rs for d in r["delays"]]
     prec = tot["tp"] / max(tot["tp"] + tot["fp"], 1)
     rec = tot["tp"] / max(tot["tp"] + tot["fn"], 1)
     return dict(method=name, **extra,
+                walks_correct=f"{k}/{n}", ci95=f"{lo:.0%}-{hi:.0%}",
                 linger_detected=f'{tot["linger_detected"]}/{tot["linger_total"]}',
                 false_alarm_walks=f'{tot["false_alarm_walks"]}/{tot["negative_walks"]}',
                 early_alerts=tot["early_alerts"],
                 stop_to_alert_s=round(float(np.median(delays)), 1) if delays else None,
                 precision=round(prec, 2), recall=round(rec, 2))
+
+
+def wilson(k, n, z=1.96):
+    """95% Wilson score interval for k successes out of n."""
+    if n == 0:
+        return 0.0, 0.0
+    p = k / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+def mcnemar(better, worse):
+    """Exact one-sided McNemar test that `better` gets more walks right than `worse`.
+
+    better/worse: {walk: correct}. Returns (b, c, p): b = walks only `better` got right,
+    c = walks only `worse` got right, p = P(at least b of b+c discordant walks favour `better`)."""
+    walks = better.keys() & worse.keys()
+    b = sum(better[w] and not worse[w] for w in walks)
+    c = sum(worse[w] and not better[w] for w in walks)
+    p = binomtest(b, b + c, 0.5, alternative="greater").pvalue if b + c else 1.0
+    return b, c, p
+
+
+# Pre-registered hypotheses (docs/PREREGISTRATION.md): (label, better method, worse method)
+HYPOTHESES = [("H1 (primary)", "Model 3: sim + real", "Model 1: real only"),
+              ("H2", "Model 2: sim only", "Rule (3 s)"),
+              ("H3", "Model 1: real only", "Rule (3 s)")]
 
 
 def floats(text):
@@ -194,22 +229,35 @@ def main():
     def model_rows(name, thresh):
         return [score_walks(f.assign(_score=f[name]), thresh=thresh) for f in scored]
 
-    table = pd.DataFrame([summarise("Rule (3 s)", [score_walks(f, rule_wait=3) for f in scored])]
-                         + [summarise(n, model_rows(n, THRESH)) for n in MODELS])
+    main_rows = {"Rule (3 s)": [score_walks(f, rule_wait=3) for f in scored]}
+    main_rows.update({n: model_rows(n, THRESH) for n in MODELS})
+    table = pd.DataFrame([summarise(n, rs) for n, rs in main_rows.items()])
+    outcome = {n: {w: c for r in rs for w, c in r["correct"].items()} for n, rs in main_rows.items()}
+    tests = []
+    for label, better, worse in HYPOTHESES:
+        b, c, p = mcnemar(outcome[better], outcome[worse])
+        tests.append(dict(hypothesis=label, claim=f"{better} > {worse}", only_better_right=b,
+                          only_worse_right=c, p_one_sided=round(p, 3),
+                          verdict="supported" if p < 0.05 else "not shown"))
+    tests = pd.DataFrame(tests)
     rule_sweep = pd.DataFrame([summarise("Rule", [score_walks(f, rule_wait=wt) for f in scored], wait_s=wt)
                                for wt in args.rule_waits])
     thresh_sweep = pd.DataFrame([summarise(n, model_rows(n, th), cutoff=th)
                                  for n in MODELS for th in args.thresholds])
 
     print(table.to_string(index=False))
+    print("\nPre-registered tests (exact one-sided McNemar on per-walk correct/incorrect, alpha 0.05)")
+    print(tests.to_string(index=False))
     print("\nRule: how long to wait before alerting")
     print(rule_sweep.drop(columns="method").to_string(index=False))
     print("\nModels: score cutoff for an alert")
     print(thresh_sweep.to_string(index=False))
     table.to_csv("comparison_results.csv", index=False)
+    tests.to_csv("hypothesis_tests.csv", index=False)
     rule_sweep.to_csv("rule_wait_sweep.csv", index=False)
     thresh_sweep.to_csv("threshold_sweep.csv", index=False)
-    print("\nSaved comparison_results.csv, rule_wait_sweep.csv, threshold_sweep.csv")
+    print("\nSaved comparison_results.csv, hypothesis_tests.csv, rule_wait_sweep.csv, threshold_sweep.csv")
+    print("walks_correct: linger alerted on time, or other walk never alerted; ci95 = Wilson interval.")
     print("stop_to_alert_s = median seconds from the stop to the alert, for lingers caught in time.")
 
 

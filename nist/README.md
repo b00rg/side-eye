@@ -158,6 +158,9 @@ calibration and all walks; blocked walk with B 0.5 m in front of the Pi (`BLOCK_
 - [x] T18: sweeps of the models' cutoff (`--thresholds`) and the rule's wait (`--rule-waits`), with a stop-to-alert column.
 - [ ] T22: set `--rate` from `packet_rate_hz` in the real walks.
 - [ ] T23: simulate about 300 walks and compare at `--sim-weight` 0.1 / 0.2 / 0.5.
+- [x] Pre-registered measures (`docs/PREREGISTRATION.md`): walks correct /24 with a 95% Wilson
+      interval in the main table, and exact one-sided McNemar tests for H1-H3
+      (`hypothesis_tests.csv`).
 - [ ] Optional: also report TC4TL-style miss rate, false-alarm rate and nDCF.
 - [x] Check `settings.json` key names match `NEAR_KEYS` / `FAR_KEYS`
       (`calibrate` writes `near_median` / `far_median`).
