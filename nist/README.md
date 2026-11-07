@@ -170,6 +170,11 @@ calibration and all walks; blocked walk with B 0.5 m in front of the Pi (`BLOCK_
       AUC of a classifier telling simulated from real rows on held-out walks (0.5 = realistic),
       per-input AUC, and medians by walk type. Validated: 0.47 on fake-vs-fake, 0.82 with a
       6 dB shift planted in `mean_rssi`, which it flags.
+- [x] Ablations and learning curve (`nist/ablations.py --mitre ... --settings settings.json
+      --real data/runs --cutoff <dBm> --rate <Hz> [--seeds 0,1,2] [--auc]`): Models 2-3 with
+      50-1000 simulated walks, sim weight 0.1-1.0, guessed vs measured losses, Gaussian vs MITRE
+      noise. `simulate_walks.py --noise gaussian` added for the noise ablation. On fake walks the
+      AUC check flags Gaussian noise (0.74) but not MITRE replay (0.47).
 - [ ] Optional: also report TC4TL-style miss rate, false-alarm rate and nDCF.
 - [x] Check `settings.json` key names match `NEAR_KEYS` / `FAR_KEYS`
       (`calibrate` writes `near_median` / `far_median`).

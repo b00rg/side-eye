@@ -95,7 +95,7 @@ def path_static(rng, lo, hi):
 MIX = {"passer": 0.35, "linger": 0.35, "far": 0.1, "bag": 0.1, "blocked": 0.1}
 
 
-def simulate(df, A, n, a, b, kind, rng, rate, losses):
+def simulate(df, A, n, a, b, kind, rng, rate, losses, noise_mode="mitre"):
     if kind == "passer":
         d, y = path_passer(rng); extra = 0.0
     elif kind == "linger":
@@ -124,6 +124,8 @@ def simulate(df, A, n, a, b, kind, rng, rate, losses):
     noise = np.tile(resid, reps)
     off = rng.integers(0, len(resid))
     noise = noise[off: off + need]
+    if noise_mode == "gaussian":   # ablation: same spread, but independent each reading
+        noise = rng.normal(0.0, resid.std(), need)
 
     t = sec + offsets
     order = np.argsort(t, kind="stable")
@@ -144,6 +146,8 @@ def main():
                    help="mean readings per second; use the median packet_rate_hz of the real walks (decimals ok)")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--losses", default=LOSSES, help="obstruction losses JSON from nist/obstruction_losses.py")
+    p.add_argument("--noise", choices=["mitre", "gaussian"], default="mitre",
+                   help="mitre: replay a real recording's jitter (default); gaussian: ablation, random noise of the same spread")
     args = p.parse_args()
 
     df = pd.read_csv(args.mitre_csv)
@@ -161,14 +165,14 @@ def main():
     kinds = rng.choice(list(MIX), size=args.n, p=list(MIX.values()))
     manifest = []
     for i, k in enumerate(kinds):
-        r, lab, src, extra = simulate(df, A, n, a, b, k, rng, args.rate, losses)
+        r, lab, src, extra = simulate(df, A, n, a, b, k, rng, args.rate, losses, args.noise)
         name = f"sim_{i:04d}_{k}"
         r.to_csv(os.path.join(args.out_dir, name + "_readings.csv"), index=False)
         lab.to_csv(os.path.join(args.out_dir, name + "_labels.csv"), index=False)
         manifest.append(dict(walk=name, kind=k, seconds=len(lab), positives=int(lab.label.sum()), mitre_file=src, loss_db=extra))
     pd.DataFrame(manifest).to_csv(os.path.join(args.out_dir, "manifest.csv"), index=False)
 
-    info = dict(obstruction_losses=loss_src, A=A, n=n, mitre_pred_2m=m2, mitre_pred_6m=m6, scale=a, shift=b,
+    info = dict(obstruction_losses=loss_src, noise=args.noise, A=A, n=n, mitre_pred_2m=m2, mitre_pred_6m=m6, scale=a, shift=b,
                 pi_near=near, pi_far=far, android_files=int(df.file.nunique()),
                 mitre_medians={str(k): float(v) for k, v in med.items()})
     json.dump(info, open(os.path.join(args.out_dir, "calibration.json"), "w"), indent=2)

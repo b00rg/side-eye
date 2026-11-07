@@ -201,6 +201,26 @@ def floats(text):
 MODELS = ["Model 1: real only", "Model 2: sim only", "Model 3: sim + real"]
 
 
+def score_folds(sim, test_pool, sim_weight=0.2):
+    """Train Models 1-3 once per fold; return each held-out fold with all three models' scores."""
+    m2 = fit(sim)
+    scored = []
+    for held in folds(test_pool):
+        test = test_pool[test_pool.walk.isin(held)].copy()
+        train_real = test_pool[~test_pool.walk.isin(held)]
+        both = pd.concat([sim, train_real])
+        w = np.concatenate([np.full(len(sim), sim_weight), np.ones(len(train_real))])
+        for name, m in zip(MODELS, (fit(train_real), m2, fit(both, w))):
+            test[name] = m.predict_proba(test[FEATS].values)[:, 1]
+        scored.append(test)
+    return scored
+
+
+def outcomes(scored, name, thresh=THRESH):
+    """{walk: correct} for one model at one cutoff, across all folds."""
+    return {w: c for f in scored for w, c in score_walks(f.assign(_score=f[name]), thresh=thresh)["correct"].items()}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sim", required=True)
@@ -225,17 +245,7 @@ def main():
         sim = sim[~sim.walk.isin(held)]
         print("SANITY MODE: no real walks given, testing on 24 held-out simulated walks\n")
 
-    # Train once per fold; keep each held-out fold with all three models' scores.
-    m2 = fit(sim)
-    scored = []
-    for held in folds(test_pool):
-        test = test_pool[test_pool.walk.isin(held)].copy()
-        train_real = test_pool[~test_pool.walk.isin(held)]
-        both = pd.concat([sim, train_real])
-        w = np.concatenate([np.full(len(sim), args.sim_weight), np.ones(len(train_real))])
-        for name, m in zip(MODELS, (fit(train_real), m2, fit(both, w))):
-            test[name] = m.predict_proba(test[FEATS].values)[:, 1]
-        scored.append(test)
+    scored = score_folds(sim, test_pool, args.sim_weight)
 
     def model_rows(name, thresh):
         return [score_walks(f.assign(_score=f[name]), thresh=thresh) for f in scored]
