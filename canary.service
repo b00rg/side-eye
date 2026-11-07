@@ -1,0 +1,15 @@
+[Unit]
+Description=Project Canary phone simulator demo
+After=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+Type=simple
+User=canary
+WorkingDirectory=/home/canary/canary
+ExecStart=/usr/bin/python3 /home/canary/canary/canary.py live
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
