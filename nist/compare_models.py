@@ -7,46 +7,49 @@ Usage:
 Real walk CSVs (from `canary.py record`) must contain, per second:
   mean_rssi, var_rssi, slope, dwell_s, close_streak_s, label
 and their filename must contain the walk kind (passer, linger, far, bag, blocked).
-Simulated walks are turned into the same features by `features()` below.
-IMPORTANT: once you have canary_core.py, replace features() with a call to its feature
-function so simulated and real features are computed by exactly the same code.
+Simulated walks are turned into the same per-second rows by `features()` below, which runs
+them through pi/canary_core.Tracker: the exact code the Pi uses when recording real walks.
 
 Evaluation follows train_model.py: 4 folds, each holds out 2 linger + 4 other real walks.
 Simulated walks are only ever used for training, never for testing.
 """
-import argparse, glob, os
+import argparse, glob, os, sys
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 
-FEATS = ["mean_rssi", "var_rssi", "slope", "dwell_s"]
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pi"))
+from canary_core import MODEL_COLUMNS, Tracker  # noqa: E402  (the Pi's feature code)
+
+FEATS = list(MODEL_COLUMNS)  # mean_rssi, var_rssi, slope, dwell_s: same columns the Pi's model uses
+ROW_FIELDS = [*MODEL_COLUMNS, "close_streak_s", "packet_rate_hz"]
 KINDS = ["passer", "linger", "far", "bag", "blocked"]
 THRESH = 0.80
 
 
-def features(readings, labels, cutoff, alpha=0.3):
-    """Per-second features from raw readings, matching the build guide's definitions."""
-    r = readings.copy()
-    r["sec"] = r.t_s.astype(int)
-    r["smooth"] = r.rssi.ewm(alpha=alpha).mean()
-    rows, streak = [], 0
-    near_hist = []
-    for s in labels.second:
-        w5 = r[(r.t_s > s - 4) & (r.t_s < s + 1)]
-        if len(w5) < 2:
-            near_hist.append(0); streak = 0
-            rows.append(dict(mean_rssi=np.nan)); continue
-        mean_s = w5.smooth.mean()
-        near = mean_s >= cutoff
-        near_hist.append(int(near))
-        streak = streak + 1 if near else 0
-        tt = w5.t_s - w5.t_s.mean()
-        slope = float((tt * (w5.smooth - w5.smooth.mean())).sum() / max((tt ** 2).sum(), 1e-9))
-        rows.append(dict(mean_rssi=mean_s, var_rssi=w5.rssi.var(), slope=slope,
-                         dwell_s=sum(near_hist[-10:]), close_streak_s=streak))
-    f = pd.DataFrame(rows)
-    f["label"] = labels.label.values
-    return f.dropna(subset=["mean_rssi"])
+def features(readings, labels, cutoff):
+    """Per-second rows for one simulated walk, computed by the Pi's own code.
+
+    Feeds each reading into pi/canary_core.Tracker in time order and takes one snapshot at the
+    end of every second, exactly as `canary.py record` does once per second. Seconds where the
+    Pi would write no row (fewer than 5 readings in the last 5 s, or signal gone for 2 s) are
+    skipped, as on the Pi. `cutoff` plays the role of threshold_dbm from settings.json.
+    """
+    tracker = Tracker()
+    t, rssi = readings.t_s.to_numpy(), readings.rssi.to_numpy()
+    order = np.argsort(t, kind="stable")
+    t, rssi = t[order], rssi[order]
+    i, rows = 0, []
+    for second, label in zip(labels.second, labels.label):
+        now = second + 1.0
+        while i < len(t) and t[i] < now:
+            tracker.add(float(t[i]), int(rssi[i]))
+            i += 1
+        snap = tracker.snapshot(now, cutoff)
+        if snap is None:
+            continue
+        rows.append(dict(t=now, **{name: getattr(snap, name) for name in ROW_FIELDS}, label=int(label)))
+    return pd.DataFrame(rows, columns=["t", *ROW_FIELDS, "label"])
 
 
 def load_sim(sim_dir, cutoff):
