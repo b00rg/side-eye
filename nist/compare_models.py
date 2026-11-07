@@ -10,7 +10,8 @@ and their filename must contain the walk kind (passer, linger, far, bag, blocked
 Simulated walks are turned into the same per-second rows by `features()` below, which runs
 them through pi/canary_core.Tracker: the exact code the Pi uses when recording real walks.
 
-Evaluation follows train_model.py: 4 folds, each holds out 2 linger + 4 other real walks.
+Evaluation uses train_model.py's own split (balanced_group_folds): 4 folds, each holds out
+2 linger + 4 other real walks, the same walks train_model.py holds out.
 Simulated walks are only ever used for training, never for testing.
 """
 import argparse, glob, os, sys
@@ -20,6 +21,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pi"))
 from canary_core import MODEL_COLUMNS, Tracker  # noqa: E402  (the Pi's feature code)
+from train_model import balanced_group_folds  # noqa: E402  (the Pi's train/test split)
 
 FEATS = list(MODEL_COLUMNS)  # mean_rssi, var_rssi, slope, dwell_s: same columns the Pi's model uses
 ROW_FIELDS = [*MODEL_COLUMNS, "close_streak_s", "packet_rate_hz"]
@@ -74,13 +76,14 @@ def load_real(real_dir):
     return pd.concat(walks, ignore_index=True)
 
 
-def folds(test, k=4, seed=0):
-    rng = np.random.default_rng(seed)
-    lin = [w for w in test.walk.unique() if test[test.walk == w].kind.iloc[0] == "linger"]
-    oth = [w for w in test.walk.unique() if w not in lin]
-    rng.shuffle(lin); rng.shuffle(oth)
-    for i in range(k):
-        yield set(lin[i::k]) | set(oth[i::k])
+def folds(test, k=4):
+    """Held-out walk sets, using pi/train_model.py's own split so both scripts test the same walks.
+
+    Walks are passed in file order (load_real reads them sorted, like train_model.load_runs),
+    so balanced_group_folds' fixed-seed shuffle gives the identical folds.
+    """
+    runs = {w: [{"label": int(x)} for x in g.label] for w, g in test.groupby("walk", sort=False)}
+    yield from (set(f) for f in balanced_group_folds(runs, n_splits=k))
 
 
 def walk_alerts(scores, t_s, thresh=THRESH, gap=2.5):
