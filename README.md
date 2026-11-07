@@ -13,6 +13,11 @@ A wearable that detects smart glasses (e.g. Meta Ray-Bans) by listening for thei
 - A **3-second rule** drives the vibration motor. A small **random forest** (20 trees) gives an ML "linger" score.
 - **Labels:** in a linger walk, seconds after the first 3 s of the stop are 1; everything else is 0.
 
+## Scope
+Side Eye detects smart glasses that are **switched on** and stay close to you. Bluetooth can't
+show whether they're recording, or where they're pointed. Design case: glasses worn on a face.
+Details and walk protocol: [`docs/DECISIONS.md`](docs/DECISIONS.md).
+
 ## Evaluation
 24 real walks: 8 linger, 8 passer, 4 far, 2 bag, 2 blocked. Evaluated on held-out whole walks: 4 folds, each holding out 2 linger + 4 other walks.
 
@@ -38,6 +43,7 @@ pi/        Raspberry Pi code: scanner, features, rule, training, service, tests
 nist/      public-data simulation and model comparison
 data/      real walks in data/runs/; public datasets in data/external/ (ignored)
 scripts/   setup helpers
+docs/      decisions and scope (docs/DECISIONS.md)
 ```
 
 ## Setup
