@@ -144,7 +144,10 @@ calibration and all walks; blocked walk with B 0.5 m in front of the Pi (`BLOCK_
 - [x] T20: blocked and bag losses measured from NIST and VSC (`nist/obstruction_losses.py`),
       drawn per walk in `simulate_walks.py`; manifest records each walk's `loss_db`.
 - [x] T21: NIST spread figure for the slides (`nist/plot_spread.py` -> `nist/nist_spread.png`).
-- [ ] T16: use `balanced_group_folds()` from `pi/train_model.py` in `compare_models.py`.
+- [x] T16: `compare_models.py` uses `balanced_group_folds()` from `pi/train_model.py`, so both
+      scripts hold out the identical walks (checked on 24 fake Pi-format walks: all 4 folds match).
+      It also builds its forest with `train_model.model_factory()` (same seed), so Model 1's
+      scores are identical to what `train_model.py` produces.
 - [x] T17: `compare_models.py` now runs simulated walks through `pi/canary_core.Tracker`, the
       Pi's own code, one snapshot per second like `canary.py record`. Before this, the old
       feature code disagreed with the Pi on whether the 3-second rule fires in 23% of seconds.
