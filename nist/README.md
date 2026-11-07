@@ -9,7 +9,12 @@ This file is the running record of where the data stands. Tasks reference the
 GitHub issues (T-numbers) in `TODO.md`.
 
 ## Pipeline
-Run every command from the repo root.
+**One command runs everything** once the walks are in `data/runs/` and `settings.json` is at the
+repo root: `python3 scripts/run_results.py` (add `--skip-ablations` for a quick pass). It reads the
+cutoff and reading rate itself, checks the walk mix, runs steps 1-3 below plus the analyses in the
+TODO list, prints the T25 decision, and writes everything to `results/` (with `results/log.txt`).
+
+The individual steps, if you need them. Run every command from the repo root.
 
 1. `scripts/get_mitre.sh`
    Clones MITRE Range-Angle (Structured) into `data/external/` and runs

@@ -65,7 +65,7 @@ def main():
     ap.add_argument("--settings", required=True)
     ap.add_argument("--real", required=True)
     ap.add_argument("--cutoff", type=float, required=True)
-    ap.add_argument("--rate", type=int, default=8)
+    ap.add_argument("--rate", type=float, default=8)
     ap.add_argument("--seeds", type=floats, default=[0])
     ap.add_argument("--auc", action="store_true", help="also compute the fake-vs-real AUC per variant")
     ap.add_argument("--work", default=os.path.join(HERE, "sim_ablations"), help="where simulated walks go (gitignored)")

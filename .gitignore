@@ -25,3 +25,7 @@ hypothesis_tests.csv
 sim_vs_real.csv
 ablations.csv
 det_curve.csv
+
+# Pipeline outputs (scripts/run_results.py); add real results with git add -f
+results/
+model.joblib
