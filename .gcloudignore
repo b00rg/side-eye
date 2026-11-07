@@ -1,0 +1,22 @@
+# What gcp/deploy.sh uploads to Cloud Build: only pi/, data/runs/ and gcp/ are needed.
+# Never upload credentials.
+.env
+.env.*
+*.env
+*-key.json
+tiger-cloud-*
+.git/
+.gitignore
+.venv/
+__pycache__/
+*.pyc
+*.zip
+*.joblib
+models/
+data/external/
+data/archive/
+data/alarm_buffer.jsonl
+nist/
+docs/
+scripts/
+settings.json

@@ -1,0 +1,6 @@
+{
+  "rule": [
+    {"action": {"type": "Delete"}, "condition": {"age": 30, "matchesPrefix": ["models/model-"]}},
+    {"action": {"type": "Delete"}, "condition": {"daysSinceNoncurrentTime": 30}}
+  ]
+}

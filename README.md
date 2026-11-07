@@ -43,6 +43,7 @@ pi/        Raspberry Pi code: scanner, features, rule, training, service, tests
 nist/      public-data simulation and model comparison
 data/      real walks in data/runs/; public datasets in data/external/ (ignored)
 scripts/   setup helpers
+gcp/       nightly retraining on Google Cloud: Tiger Data labels -> model.joblib -> Pi (gcp/README.md)
 docs/      decisions and scope (docs/DECISIONS.md)
 ```
 
