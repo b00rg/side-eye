@@ -24,3 +24,4 @@ threshold_sweep.csv
 hypothesis_tests.csv
 sim_vs_real.csv
 ablations.csv
+det_curve.csv
