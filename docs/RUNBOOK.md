@@ -1,0 +1,62 @@
+# Runbook: from 24 walks to Model 3 on the Pi
+
+Everything below has been run end to end on the placeholder walks. With real walks the commands
+are the same; only the numbers change.
+
+## 1. Record (on the Pi)
+Calibrate with the phone at the right ear, then record the 24 walks in the run-sheet order
+(see `docs/DECISIONS.md` for the walk rules). Then: `cp settings.json settings_room1.json`.
+
+## 2. Bring the walks to the Mac (repo root)
+```
+rm data/runs/*.csv data/runs/PLACEHOLDER
+scp canary@canary.local:/home/canary/canary/data/runs/*.csv data/runs/
+scp canary@canary.local:/home/canary/canary/settings.json settings.json
+```
+Delete the placeholders first, or results silently mix 48 walks.
+
+## 3. Results (Mac, about a minute)
+```
+python3 scripts/run_results.py
+```
+Prints Lili's training printout, the Rule vs Models 1-3 table (walks correct /24 with 95% ranges),
+the pre-registered tests, both sweeps, the fake-vs-real check, nDCF, ablations, and the **T25
+decision** (`docs/PREREGISTRATION.md`, Amendment 1). Everything is saved in `results/`, including
+`results/det_curve.png` and `results/log.txt`.
+
+## 4. If T25 says Model 3: deploy it
+```
+python3 scripts/deploy_model3.py
+```
+Exports `data/sim_rows.csv`, checks that Model 3 trains, rebuilds `Canary_code.zip` (code, tests,
+`sim_rows.csv`, a `canary.service` that runs `live --use-model`), and prints the Pi commands:
+```
+# Mac: unzip Canary_code.zip in ~/Downloads, then
+cd ~/Downloads/Canary_code
+scp canary*.py train_model.py sim_rows.csv canary.service canary@canary.local:/home/canary/canary/
+scp -r tests canary@canary.local:/home/canary/canary/
+# Pi:
+cd /home/canary/canary
+python3 -m unittest discover -s tests            # OK
+python3 train_model.py --sim-rows sim_rows.csv   # trains Model 3 on the Pi -> model.joblib
+python3 canary.py live --use-model --no-motor    # check the screen first
+python3 canary.py live --use-model               # with the motor
+sudo cp canary.service /etc/systemd/system/canary.service
+sudo systemctl daemon-reload && sudo systemctl restart canary.service
+```
+The Pi trains its own `model.joblib` because a model saved on the Mac may not load with the Pi's
+scikit-learn version.
+
+## 5. See what it does (Mac)
+```
+python3 scripts/replay_walk.py data/runs/<a linger walk>.csv data/runs/<a passer walk>.csv
+```
+Plays recorded walks through Model 3, laid out like the `live` screen, with the rule alongside.
+
+## Demo note
+If Model 3 drives the motor, hold the stage stop for **15-20 s**, not the guide's 6 s: on the
+placeholder walks it buzzed 5 s after the stop on median, but up to 13 s on some walks. Rehearse it.
+
+## If T25 says keep the rule
+Skip step 4. The Pi keeps `live` with the 3-second rule (the guide's `canary.service`), and the
+pitch says the models didn't clear the pre-registered bar.

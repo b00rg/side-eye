@@ -2,6 +2,7 @@
 
 from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
 from statistics import mean, variance
 
 
@@ -10,6 +11,34 @@ HEYCYAN_UUID = "7905fff0-b5ce-4e99-a40f-4b1e122d00d0"
 DEMO_ID = 0x058E
 DEMO_PAYLOAD = bytes.fromhex("CA01")
 MODEL_COLUMNS = ("mean_rssi", "var_rssi", "slope", "dwell_s")
+MODEL_THRESHOLD = 0.8   # model alert: score >= this on two rows...
+MODEL_GAP_S = 2.5       # ...no more than this many seconds apart (same rule nist/compare_models.py scores)
+
+
+def project_root(script):
+    """Where settings.json, data/runs/ and model.joblib live.
+
+    Inside the repo the scripts sit in pi/, so it's the repo root. Deployed flat (the guide's
+    /home/canary/canary from Canary_code.zip) it's the scripts' own folder.
+    """
+    here = Path(script).resolve().parent
+    if here.name == "pi" and (here.parent / "nist").is_dir():
+        return here.parent
+    return here
+
+
+class ModelAlert:
+    """Fires when the linger score is >= MODEL_THRESHOLD twice within MODEL_GAP_S seconds."""
+
+    def __init__(self, threshold=MODEL_THRESHOLD, gap=MODEL_GAP_S):
+        self.threshold, self.gap, self.last_high = threshold, gap, None
+
+    def update(self, now, score):
+        if score < self.threshold:
+            return False
+        fire = self.last_high is not None and now - self.last_high <= self.gap
+        self.last_high = now
+        return fire
 
 
 def signature(advertisement, demo_only=True):

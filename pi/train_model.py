@@ -4,6 +4,7 @@ The live haptic path remains the measured 3-second proximity rule. The model's
 probability is an experimental score, not a probability of surveillance.
 """
 
+import argparse
 import csv
 import random
 from collections import defaultdict
@@ -13,10 +14,10 @@ import joblib
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import precision_score, recall_score
 
-from canary_core import MODEL_COLUMNS
+from canary_core import MODEL_COLUMNS, project_root
 
 
-ROOT = Path(__file__).resolve().parent.parent  # repo root: settings.json, data/runs/, model.joblib
+ROOT = project_root(__file__)  # repo root in the repo; this folder when deployed flat on the Pi
 
 
 def load_runs():
@@ -106,7 +107,36 @@ def event_metrics(test_runs, model):
     return result
 
 
-def main():
+def load_sim_rows(path):
+    """Simulated rows (MODEL_COLUMNS + label) exported by nist/export_sim_rows.py."""
+    with open(path, newline="") as source:
+        rows = list(csv.DictReader(source))
+    x = [[float(row[name]) for name in MODEL_COLUMNS] for row in rows]
+    y = [int(row["label"]) for row in rows]
+    return x, y
+
+
+def fit(x, y, sim=None, sim_weight=0.2):
+    """Model 1 from real rows; Model 3 if simulated rows are given (each weighted sim_weight)."""
+    if sim is None:
+        return model_factory().fit(x, y)
+    sx, sy = sim
+    weights = [1.0] * len(x) + [sim_weight] * len(sx)
+    return model_factory().fit(x + sx, y + sy, sample_weight=weights)
+
+
+def main(argv=()):
+    ap = argparse.ArgumentParser(description="Train and evaluate the linger model on data/runs")
+    ap.add_argument("--sim-rows", help="simulated rows CSV (nist/export_sim_rows.py): trains Model 3 instead of Model 1")
+    ap.add_argument("--sim-weight", type=float, default=0.2, help="weight of each simulated row (default 0.2)")
+    args = ap.parse_args(list(argv))
+    sim = None
+    if args.sim_rows:
+        sim_path = Path(args.sim_rows)
+        sim = load_sim_rows(sim_path if sim_path.is_absolute() else ROOT / sim_path)
+        print(f"Model 3: real walks + {len(sim[0])} simulated rows (weight {args.sim_weight})")
+    else:
+        print("Model 1: real walks only")
     runs = load_runs()
     if not runs:
         raise SystemExit("No CSV files in data/runs. Record scenarios first.")
@@ -120,7 +150,7 @@ def main():
         test_items = [(run_id, runs[run_id]) for run_id in test_ids]
         x_train, y_train = matrix(train_items)
         x_test, y_test = matrix(test_items)
-        model = model_factory().fit(x_train, y_train)
+        model = fit(x_train, y_train, sim, args.sim_weight)
         predicted = [int(p >= 0.8) for p in model.predict_proba(x_test)[:, 1]]
         true_rows.extend(y_test)
         predicted_rows.extend(predicted)
@@ -142,11 +172,13 @@ def main():
           f"rule {int(totals['rule_premature'])}")
     print(f"Negative run time: {totals['negative_minutes']:.1f} minutes")
     final_x, final_y = matrix(list(runs.items()))
-    model = model_factory().fit(final_x, final_y)
+    model = fit(final_x, final_y, sim, args.sim_weight)
     model_path = ROOT / "model.joblib"
     joblib.dump(model, model_path)
-    print(f"Saved experimental model: {model_path}")
+    print(f"Saved {'Model 3' if sim else 'Model 1'}: {model_path}")
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    main(sys.argv[1:])

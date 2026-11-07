@@ -9,10 +9,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from canary_core import MODEL_COLUMNS, Tracker, signature
+from canary_core import MODEL_COLUMNS, ModelAlert, Tracker, project_root, signature
 
 
-ROOT = Path(__file__).resolve().parent.parent  # repo root: settings.json, data/runs/, model.joblib
+ROOT = project_root(__file__)  # repo root in the repo; this folder when deployed flat on the Pi
 SETTINGS = ROOT / "settings.json"
 RUNS = ROOT / "data" / "runs"
 
@@ -202,7 +202,7 @@ async def motor_test():
         motor.close()
 
 
-async def live(with_motor):
+async def live(with_motor, use_model=False):
     limit = threshold()
     session = Session()
     motor = Motor() if with_motor else None
@@ -213,7 +213,11 @@ async def live(with_motor):
         import joblib
 
         model = joblib.load(model_path)  # Load only the file created by this team's train_model.py.
-    print(f"Canary live: simulator packet only; threshold {limit} dBm; ML score is display-only.")
+    if use_model and model is None:
+        raise SystemExit("--use-model needs model.joblib. Train it first: python3 train_model.py --sim-rows sim_rows.csv")
+    model_alerts = {}
+    driver = "the model (score >= 0.8 twice within 2.5 s)" if use_model else "the 3-second rule; ML score is display-only"
+    print(f"Side Eye live: simulator packet only; threshold {limit} dBm; motor follows {driver}.")
     try:
         async with new_scanner(session.callback):
             while True:
@@ -227,7 +231,10 @@ async def live(with_motor):
                     probability = None
                     if model is not None:
                         probability = float(model.predict_proba([snap.model_vector()])[0][1])
-                    eligible = snap.close_streak_s >= 3.0
+                    if use_model:
+                        eligible = model_alerts.setdefault(address, ModelAlert()).update(now, probability)
+                    else:
+                        eligible = snap.close_streak_s >= 3.0
                     fire = eligible and now - last_alert.get(address, -1e9) >= 15
                     if fire:
                         last_alert[address] = now
@@ -256,6 +263,8 @@ def main():
     commands.add_parser("motor-test", help="pulse the module connected to GPIO18")
     live_parser = commands.add_parser("live", help="run the haptic demo")
     live_parser.add_argument("--no-motor", action="store_true", help="terminal-only software check")
+    live_parser.add_argument("--use-model", action="store_true",
+                             help="motor follows the trained model (model.joblib) instead of the 3-second rule")
     args = parser.parse_args()
     if args.command == "scan":
         asyncio.run(scan(args.seconds, not args.real))
@@ -266,7 +275,7 @@ def main():
     elif args.command == "motor-test":
         asyncio.run(motor_test())
     elif args.command == "live":
-        asyncio.run(live(not args.no_motor))
+        asyncio.run(live(not args.no_motor, args.use_model))
 
 
 if __name__ == "__main__":

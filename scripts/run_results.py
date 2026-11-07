@@ -81,27 +81,24 @@ def check_inputs(log):
 
 
 def t25_decision(log):
-    """Pre-registered: a model replaces the rule only if it gets more walks correct than the rule
-    AND has no more false-alarm walks. Among models that qualify, pick the most walks correct."""
+    """docs/PREREGISTRATION.md, Amendment 1: Model 3 is the planned deployment model. It drives the
+    motor if it gets more walks correct than the rule AND has no more false-alarm walks; else the rule stays."""
     t = pd.read_csv(os.path.join(OUT, "comparison_results.csv")).set_index("method")
     num = lambda s: int(str(s).split("/")[0])
-    rule = t.loc["Rule (3 s)"]
-    log(f"\n{'=' * 78}\nT25: what drives the motor (rule from docs/PREREGISTRATION.md)\n{'=' * 78}")
-    log(f"  Rule (3 s): {rule.walks_correct} walks correct, {rule.false_alarm_walks} false-alarm walks")
-    ok = []
-    for m in [i for i in t.index if i.startswith("Model")]:
-        r = t.loc[m]
-        better = num(r.walks_correct) > num(rule.walks_correct)
-        no_more_fa = num(r.false_alarm_walks) <= num(rule.false_alarm_walks)
-        log(f"  {m}: {r.walks_correct} correct ({'more' if better else 'not more'} than the rule), "
-            f"{r.false_alarm_walks} false alarms ({'no more' if no_more_fa else 'more'} than the rule) -> "
-            f"{'qualifies' if better and no_more_fa else 'does not qualify'}")
-        if better and no_more_fa:
-            ok.append((num(r.walks_correct), m))
-    if ok:
-        log(f"\n  DECISION: {max(ok)[1]} drives the motor (most walks correct among models that qualify).")
+    rule, m3 = t.loc["Rule (3 s)"], t.loc["Model 3: sim + real"]
+    log(f"\n{'=' * 78}\nT25: what drives the motor (docs/PREREGISTRATION.md, Amendment 1)\n{'=' * 78}")
+    for name in t.index:
+        r = t.loc[name]
+        log(f"  {name:20s} {r.walks_correct:>6} walks correct, {r.false_alarm_walks:>6} false-alarm walks")
+    better = num(m3.walks_correct) > num(rule.walks_correct)
+    no_more_fa = num(m3.false_alarm_walks) <= num(rule.false_alarm_walks)
+    log(f"\n  Model 3 vs rule: {'more' if better else 'not more'} walks correct, "
+        f"{'no more' if no_more_fa else 'more'} false alarms")
+    if better and no_more_fa:
+        log("  DECISION: Model 3 drives the motor. Next: python3 scripts/deploy_model3.py")
     else:
-        log("\n  DECISION: keep the 3-second rule; no model qualifies. Say so in the pitch.")
+        log("  DECISION: keep the 3-second rule (Model 3 didn't clear the bar). Say so in the pitch.")
+    return better and no_more_fa
 
 
 def main():

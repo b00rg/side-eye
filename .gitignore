@@ -29,3 +29,4 @@ det_curve.csv
 # Pipeline outputs (scripts/run_results.py); add real results with git add -f
 results/
 model.joblib
+data/sim_rows.csv
