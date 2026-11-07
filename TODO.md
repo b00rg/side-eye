@@ -54,7 +54,7 @@ T1 (A), T2 (B), T10 (C), T15 (C), T16–T19 (B), T29 (team), T30 (C)
 
 ## Optional track add-ons (only once T28 works)
 - [ ] **T35 · Tiger Data:** walks and NIST readings as time series; training and the graph read from it. Training data only, never live readings. *Owner: C. Needs: T13, T19, T28.*
-- [ ] **T36 · Vultr:** run T23 on Vultr and copy `model.joblib` back to the Pi. *Owner: A. Needs: T23, T28.*
+- [ ] **T36 · Google Cloud:** nightly Cloud Run Job retrains from Tiger Data labels + walks (`pi/retrain.py`, `gcp/`); Pi pulls `model.joblib` with `gcp/fetch_model.sh`. Code done; project not deployed yet. *Owner: A. Needs: T23, T28.*
 
 ## Not doing
 - ESP32 port and m2cgen C model: the Pi is the build.

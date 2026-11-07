@@ -1,0 +1,8 @@
+# Builds gcp/Dockerfile from the repo root (gcloud builds submit --config gcp/cloudbuild.yaml .).
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "gcp/Dockerfile", "--build-arg", "DEBIAN_RELEASE=${_DEBIAN_RELEASE}", "-t", "${_IMAGE}", "."]
+images: ["${_IMAGE}"]
+substitutions:
+  _DEBIAN_RELEASE: bookworm
+  _IMAGE: unset
