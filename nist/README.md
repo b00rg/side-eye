@@ -170,7 +170,11 @@ calibration and all walks; blocked walk with B 0.5 m in front of the Pi (`BLOCK_
       50-1000 simulated walks, sim weight 0.1-1.0, guessed vs measured losses, Gaussian vs MITRE
       noise. `simulate_walks.py --noise gaussian` added for the noise ablation. On fake walks the
       AUC check flags Gaussian noise (0.74) but not MITRE replay (0.47).
-- [ ] Optional: also report TC4TL-style miss rate, false-alarm rate and nDCF.
+- [x] Miss vs false-alarm curve and TC4TL nDCF (`nist/det_curve.py --sim nist/sim --real data/runs
+      --cutoff <dBm> --out nist/det_curve.png`): each model swept over score cutoffs, the rule over
+      waits of 1-8 s, walk-level miss and false-alarm rates, nDCF = miss + false alarm (TC4TL pilot
+      plan, weights 1/1), and row-level ROC AUC. The "best" setting is picked on the test walks, so
+      it is optimistic; the pre-registered settings are the honest numbers.
 - [x] Check `settings.json` key names match `NEAR_KEYS` / `FAR_KEYS`
       (`calibrate` writes `near_median` / `far_median`).
 
