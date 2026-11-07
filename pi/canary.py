@@ -15,6 +15,8 @@ from canary_core import MODEL_COLUMNS, ModelAlert, Tracker, project_root, signat
 ROOT = project_root(__file__)  # repo root in the repo; this folder when deployed flat on the Pi
 SETTINGS = ROOT / "settings.json"
 RUNS = ROOT / "data" / "runs"
+BUTTON_PIN = 17        # feedback button: physical pin 11 (GPIO17) to pin 9 (GND)
+RETRAIN_EVERY = 20     # retrain after this many new feedback rows
 
 
 def threshold():
@@ -202,28 +204,103 @@ async def motor_test():
         motor.close()
 
 
-async def live(with_motor, use_model=False):
+class ModelFile:
+    """model.joblib, reloaded automatically when retraining replaces it."""
+
+    def __init__(self, path):
+        self.path, self.mtime, self.model = path, None, None
+        self.refresh()
+
+    def refresh(self):
+        if not self.path.exists():
+            return False
+        mtime = self.path.stat().st_mtime
+        if mtime == self.mtime:
+            return False
+        import joblib
+
+        self.model = joblib.load(self.path)  # Load only the file created by this team's train_model.py.
+        self.mtime = mtime
+        return True
+
+
+def start_presses(use_button):
+    """Feedback presses arrive on a queue: from the GPIO17 button, and from typing y + Enter."""
+    import queue
+    import sys
+    import threading
+
+    presses = queue.SimpleQueue()
+    button = None
+    if use_button:
+        try:
+            from gpiozero import Button
+
+            button = Button(BUTTON_PIN, pull_up=True, bounce_time=0.1)   # button between GPIO17 and GND
+            button.when_pressed = lambda: presses.put("button")
+        except Exception as error:   # no GPIO here (laptop) or pin busy: keyboard still works
+            print(f"Feedback button unavailable ({error}); type y + Enter instead.")
+
+    def keyboard():
+        for line in sys.stdin:
+            if line.strip().lower() == "y":
+                presses.put("keyboard")
+
+    threading.Thread(target=keyboard, daemon=True).start()
+    return presses, button
+
+
+def retrain_in_background(feedback_path):
+    """Retrain with the latest feedback; live() picks up the new model.joblib when it lands."""
+    import subprocess
+    import sys
+
+    args = [sys.executable, str(Path(__file__).resolve().parent / "train_model.py"), "--feedback", str(feedback_path)]
+    sim_rows = next((p for p in (ROOT / "sim_rows.csv", ROOT / "data" / "sim_rows.csv") if p.exists()), None)
+    if sim_rows:   # flat on the Pi it's next to the scripts; in the repo it's data/sim_rows.csv
+        args += ["--sim-rows", str(sim_rows)]
+    log = open(ROOT / "retrain.log", "a")
+    return subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
+
+
+async def live(with_motor, use_model=False, feedback_on=True, retrain_every=RETRAIN_EVERY):
+    from feedback import Feedback, FeedbackStore
+
     limit = threshold()
     session = Session()
     motor = Motor() if with_motor else None
     last_alert = {}
-    model = None
-    model_path = ROOT / "model.joblib"
-    if model_path.exists():
-        import joblib
-
-        model = joblib.load(model_path)  # Load only the file created by this team's train_model.py.
-    if use_model and model is None:
-        raise SystemExit("--use-model needs model.joblib. Train it first: python3 train_model.py --sim-rows sim_rows.csv")
+    model_file = ModelFile(ROOT / "model.joblib")
+    if use_model and model_file.model is None:
+        print("No model.joblib yet: the motor follows the 3-second rule until a model is trained.")
     model_alerts = {}
+    feedback = Feedback(FeedbackStore(ROOT / "feedback.db")) if feedback_on else None
+    presses, button = start_presses(with_motor) if feedback_on else (None, None)
+    rows_since_train, retrain = 0, None
     driver = "the model (score >= 0.8 twice within 2.5 s)" if use_model else "the 3-second rule; ML score is display-only"
     print(f"Side Eye live: simulator packet only; threshold {limit} dBm; motor follows {driver}.")
+    if feedback:
+        print(f"Feedback on: press the button (GPIO{BUTTON_PIN}) or type y + Enter when someone is lingering. "
+              f"{feedback.store.count()} feedback rows so far.")
     try:
         async with new_scanner(session.callback):
             while True:
                 await asyncio.sleep(1)
                 now = time.monotonic()
+                if model_file.refresh() and model_file.mtime:
+                    print("Model updated: now using the newly trained model.joblib.", flush=True)
+                model = model_file.model
                 active = list(session.snapshots(now, limit))
+                if feedback:
+                    while not presses.empty():
+                        source = presses.get()
+                        added = feedback.press(now)
+                        rows_since_train += added
+                        print(f"Feedback ({source}): {added} rows saved as 'lingering'.", flush=True)
+                    rows_since_train += feedback.tick(now)
+                    if rows_since_train >= retrain_every and (retrain is None or retrain.poll() is not None):
+                        print(f"{rows_since_train} new feedback rows: retraining in the background.", flush=True)
+                        retrain, rows_since_train = retrain_in_background(ROOT / "feedback.db"), 0
                 if not active:
                     print("Waiting for simulator packet...", flush=True)
                     continue
@@ -231,13 +308,17 @@ async def live(with_motor, use_model=False):
                     probability = None
                     if model is not None:
                         probability = float(model.predict_proba([snap.model_vector()])[0][1])
-                    if use_model:
+                    if feedback:
+                        feedback.observe(now, address, snap.model_vector())
+                    if use_model and model is not None:
                         eligible = model_alerts.setdefault(address, ModelAlert()).update(now, probability)
                     else:
                         eligible = snap.close_streak_s >= 3.0
                     fire = eligible and now - last_alert.get(address, -1e9) >= 15
                     if fire:
                         last_alert[address] = now
+                        if feedback:
+                            feedback.alert(now, address)
                     score = f"{probability:.2f}" if probability is not None else "untrained"
                     print(
                         f"RSSI {snap.latest_rssi:4d} dBm | near streak {snap.close_streak_s:4.1f} s "
@@ -249,6 +330,8 @@ async def live(with_motor, use_model=False):
     finally:
         if motor:
             motor.close()
+        if button:
+            button.close()
 
 
 def main():
@@ -265,6 +348,8 @@ def main():
     live_parser.add_argument("--no-motor", action="store_true", help="terminal-only software check")
     live_parser.add_argument("--use-model", action="store_true",
                              help="motor follows the trained model (model.joblib) instead of the 3-second rule")
+    live_parser.add_argument("--no-feedback", action="store_true",
+                             help="don't record feedback presses or retrain")
     args = parser.parse_args()
     if args.command == "scan":
         asyncio.run(scan(args.seconds, not args.real))
@@ -275,7 +360,7 @@ def main():
     elif args.command == "motor-test":
         asyncio.run(motor_test())
     elif args.command == "live":
-        asyncio.run(live(not args.no_motor, args.use_model))
+        asyncio.run(live(not args.no_motor, args.use_model, not args.no_feedback))
 
 
 if __name__ == "__main__":

@@ -116,20 +116,31 @@ def load_sim_rows(path):
     return x, y
 
 
-def fit(x, y, sim=None, sim_weight=0.2):
-    """Model 1 from real rows; Model 3 if simulated rows are given (each weighted sim_weight)."""
-    if sim is None:
+def fit(x, y, sim=None, sim_weight=0.2, feedback=None):
+    """Model 1 from real rows; Model 3 if simulated rows are given (each weighted sim_weight);
+    feedback rows (from the button, with their own weights) are added when given."""
+    if sim is None and feedback is None:
         return model_factory().fit(x, y)
-    sx, sy = sim
-    weights = [1.0] * len(x) + [sim_weight] * len(sx)
-    return model_factory().fit(x + sx, y + sy, sample_weight=weights)
+    xs, ys, ws = list(x), list(y), [1.0] * len(x)
+    if sim is not None:
+        xs, ys, ws = xs + sim[0], ys + sim[1], ws + [sim_weight] * len(sim[0])
+    if feedback is not None:
+        xs, ys, ws = xs + feedback[0], ys + feedback[1], ws + feedback[2]
+    return model_factory().fit(xs, ys, sample_weight=ws)
 
 
 def main(argv=()):
     ap = argparse.ArgumentParser(description="Train and evaluate the linger model on data/runs")
     ap.add_argument("--sim-rows", help="simulated rows CSV (nist/export_sim_rows.py): trains Model 3 instead of Model 1")
     ap.add_argument("--sim-weight", type=float, default=0.2, help="weight of each simulated row (default 0.2)")
+    ap.add_argument("--feedback", help="feedback.db from the button (canary.py live): adds those rows to training")
     args = ap.parse_args(list(argv))
+    feedback = None
+    if args.feedback and Path(args.feedback).exists():
+        from feedback import load_rows
+
+        feedback = load_rows(args.feedback)
+        print(f"Plus {len(feedback[0])} feedback rows from the button ({sum(feedback[1])} 'lingering')")
     sim = None
     if args.sim_rows:
         sim_path = Path(args.sim_rows)
@@ -150,7 +161,7 @@ def main(argv=()):
         test_items = [(run_id, runs[run_id]) for run_id in test_ids]
         x_train, y_train = matrix(train_items)
         x_test, y_test = matrix(test_items)
-        model = fit(x_train, y_train, sim, args.sim_weight)
+        model = fit(x_train, y_train, sim, args.sim_weight, feedback)
         predicted = [int(p >= 0.8) for p in model.predict_proba(x_test)[:, 1]]
         true_rows.extend(y_test)
         predicted_rows.extend(predicted)
@@ -172,7 +183,7 @@ def main(argv=()):
           f"rule {int(totals['rule_premature'])}")
     print(f"Negative run time: {totals['negative_minutes']:.1f} minutes")
     final_x, final_y = matrix(list(runs.items()))
-    model = fit(final_x, final_y, sim, args.sim_weight)
+    model = fit(final_x, final_y, sim, args.sim_weight, feedback)
     model_path = ROOT / "model.joblib"
     joblib.dump(model, model_path)
     print(f"Saved {'Model 3' if sim else 'Model 1'}: {model_path}")

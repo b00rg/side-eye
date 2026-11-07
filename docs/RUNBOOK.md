@@ -33,7 +33,7 @@ Exports `data/sim_rows.csv`, checks that Model 3 trains, rebuilds `Canary_code.z
 ```
 # Mac: unzip Canary_code.zip in ~/Downloads, then
 cd ~/Downloads/Canary_code
-scp canary*.py train_model.py sim_rows.csv canary.service canary@canary.local:/home/canary/canary/
+scp canary*.py train_model.py feedback.py update_from_cloud.sh sim_rows.csv canary.service canary@canary.local:/home/canary/canary/
 scp -r tests canary@canary.local:/home/canary/canary/
 # Pi:
 cd /home/canary/canary
@@ -52,6 +52,25 @@ scikit-learn version.
 python3 scripts/replay_walk.py data/runs/<a linger walk>.csv data/runs/<a passer walk>.csv
 ```
 Plays recorded walks through Model 3, laid out like the `live` screen, with the rule alongside.
+
+## 6. Feedback button (on the Pi, while `live` runs)
+Press the button (GPIO17 to GND), or type `y` + Enter, when someone is lingering. Rows go to
+`feedback.db`; every 20 new rows the Pi retrains in the background and `live` prints
+"Model updated". Rehearse without hardware: `python3 scripts/fake_live.py` on the Mac runs the
+real `live` loop with a fake radio, clock and button.
+
+## 7. Tiger (database) and Vultr (cloud compute)
+```
+export DATABASE_URL='postgres://...'           # Tiger Cloud connection string
+python3 scripts/tiger.py init                  # once
+python3 scripts/tiger.py load                  # walks, calibration, NIST, simulated rows
+python3 scripts/tiger.py load --feedback <copy of the Pi's feedback.db>   # optional, anonymous rows
+python3 scripts/tiger.py status
+```
+Vultr VM (Ubuntu 24.04): `GITHUB_TOKEN=... bash scripts/vultr/setup.sh` once, put `DATABASE_URL` in
+`~/side-eye/.env`, then `bash scripts/vultr/train_from_tiger.sh`: exports from Tiger, runs the full
+pipeline, writes `data/sim_rows.csv` and stores it back in Tiger. The Pi then pulls and retrains:
+`bash update_from_cloud.sh user@vultr-ip` (the VM can't reach the Pi behind the hotspot, so the Pi pulls).
 
 ## Demo note
 If Model 3 drives the motor, hold the stage stop for **15-20 s**, not the guide's 6 s: on the

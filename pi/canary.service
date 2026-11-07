@@ -2,7 +2,7 @@
 # and `python3 pi/canary.py calibrate` has written /home/canary/side-eye/settings.json.
 # Install:  sudo cp pi/canary.service /etc/systemd/system/ && sudo systemctl enable --now canary
 [Unit]
-Description=Side Eye smart-glasses detector
+Description=Side Eye smart-glasses detector (Model 3 drives the motor; falls back to the 3-second rule until model.joblib exists)
 After=bluetooth.service
 Wants=bluetooth.service
 
@@ -10,7 +10,7 @@ Wants=bluetooth.service
 Type=simple
 User=canary
 WorkingDirectory=/home/canary/side-eye
-ExecStart=/usr/bin/python3 /home/canary/side-eye/pi/canary.py live
+ExecStart=/usr/bin/python3 /home/canary/side-eye/pi/canary.py live --use-model
 Restart=on-failure
 RestartSec=3
 

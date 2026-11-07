@@ -22,6 +22,17 @@ python3 pi/canary.py motor-test           # pulse GPIO18
 python3 pi/canary.py live [--no-motor]    # 3 s rule drives the motor; ML score is display-only
 ```
 
+## Model 3, feedback button, cloud updates
+```
+python3 pi/train_model.py --sim-rows data/sim_rows.csv [--feedback feedback.db]   # Model 3 (+ button feedback)
+python3 pi/canary.py live --use-model     # motor follows Model 3; falls back to the rule if no model yet
+```
+- `feedback.py`: the button (GPIO17 to GND, or `y` + Enter) saves anonymous training rows to
+  `feedback.db`; `live` retrains every 20 new rows and reloads `model.joblib` by itself.
+- `update_from_cloud.sh user@vultr-ip`: fetch new simulated rows from the Vultr VM and retrain here.
+- The same files work in the repo (`pi/`) and flat on the Pi (`/home/canary/canary`); see
+  `canary_core.project_root`.
+
 ## Tests
 ```
 cd pi && python3 -m unittest discover -s tests

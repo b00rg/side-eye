@@ -19,9 +19,9 @@ import zipfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SIM_ROWS = os.path.join(ROOT, "data", "sim_rows.csv")
 ZIP = os.path.join(ROOT, "Canary_code.zip")
-PI_FILES = ["canary.py", "canary_core.py", "train_model.py"]
+PI_FILES = ["canary.py", "canary_core.py", "train_model.py", "feedback.py", "update_from_cloud.sh"]
 SERVICE = """[Unit]
-Description=Side Eye smart-glasses detector (Model 3 drives the motor)
+Description=Side Eye smart-glasses detector (Model 3 drives the motor; falls back to the 3-second rule until model.joblib exists)
 After=bluetooth.service
 Wants=bluetooth.service
 
@@ -67,7 +67,7 @@ def main():
 == 4. On the Pi
 From the Mac (unzip Canary_code.zip in ~/Downloads first; this replaces the code, keeps data/runs and settings.json):
   cd ~/Downloads/Canary_code
-  scp canary*.py train_model.py sim_rows.csv canary.service canary@canary.local:/home/canary/canary/
+  scp canary*.py train_model.py feedback.py update_from_cloud.sh sim_rows.csv canary.service canary@canary.local:/home/canary/canary/
   scp -r tests canary@canary.local:/home/canary/canary/
 On the Pi (ssh canary@canary.local):
   cd /home/canary/canary

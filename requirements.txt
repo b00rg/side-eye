@@ -3,3 +3,4 @@ numpy
 scikit-learn
 matplotlib
 openpyxl
+psycopg[binary]==3.3.8
