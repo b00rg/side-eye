@@ -17,11 +17,10 @@ Simulated walks are only ever used for training, never for testing.
 import argparse, glob, os, sys
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pi"))
 from canary_core import MODEL_COLUMNS, Tracker  # noqa: E402  (the Pi's feature code)
-from train_model import balanced_group_folds  # noqa: E402  (the Pi's train/test split)
+from train_model import balanced_group_folds, model_factory  # noqa: E402  (the Pi's split and model)
 
 FEATS = list(MODEL_COLUMNS)  # mean_rssi, var_rssi, slope, dwell_s: same columns the Pi's model uses
 ROW_FIELDS = [*MODEL_COLUMNS, "close_streak_s", "packet_rate_hz"]
@@ -128,8 +127,9 @@ def score_walks(test, scores, rule=False):
     return out
 
 
-def fit(train, weights=None, seed=0):
-    m = RandomForestClassifier(n_estimators=20, max_depth=4, random_state=seed, class_weight="balanced")
+def fit(train, weights=None):
+    """Same forest as the Pi's train_model.py (20 trees, depth 4, balanced, seed 42)."""
+    m = model_factory()
     m.fit(train[FEATS].values, train.label.values, sample_weight=weights)
     return m
 
