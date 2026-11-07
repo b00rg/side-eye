@@ -1,0 +1,16 @@
+# Public datasets (re-downloaded by scripts/get_mitre.sh; mitre_rssi.csv is >100 MB)
+data/external/
+
+# Generated simulated walks
+nist/sim*/
+
+# Trained models and outputs
+*.joblib
+comparison_results.csv
+
+# Python
+__pycache__/
+.venv/
+
+# macOS
+.DS_Store
