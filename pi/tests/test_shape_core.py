@@ -33,7 +33,7 @@ class ShapeCoreTests(unittest.TestCase):
         sys.path.insert(0, os.path.join(REPO, "nist"))
         from compare_models import load_real
         from shape_features import SHAPE, add_shape
-        for folder in ("runs_session1", "runs_confirm"):
+        for folder in ("runs_session1", "runs_session2"):
             path = os.path.join(REPO, "data", folder)
             if not os.path.isdir(path):
                 continue
