@@ -23,6 +23,16 @@ The cutoff (-26) sits above anything seen at 1 m; the 3-second requirement means
 or a brief lean-in doesn't trigger it. If touching doesn't trigger reliably, -28 is the weakest
 safe value; if 1 m triggers, use -24.
 
+## Faster, more insistent version: `pi/demo_live.py` (use this one)
+With the -26 / -29 cutoffs the near streak kept resetting just short of 3 s while touching: about
+half the touching readings sit at -28/-31, like 1 m. What only happens when touching is very strong
+readings (-1 to -24); the strongest seen at 1 m was -27. `demo_live.py` buzzes when at least 3
+readings stronger than -24 dBm arrive within 2 s, and repeats every 3 s while still close: three
+0.4 s pulses each time. Replaying the logged readings: no buzz at ~1 m, first buzz ~1 s after touching.
+```
+python3 demo_live.py              # options: --strong -24 --count 3 --window 2 --cooldown 3
+```
+
 ## This is a demo setting, not the experiment's result
 - It was tuned in the demo room, by hand, after the experiment. It is **not** pre-registered and
   was not evaluated on held-out walks.
