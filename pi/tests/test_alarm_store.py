@@ -114,6 +114,24 @@ class RowTests(unittest.TestCase):
         self.assertEqual(alarm["close_streak_s"], 3.4)
         self.assertEqual(alarm["ml_score"], 0.8123)
 
+    def test_shape_inputs_are_stored_with_a_shape_model_buzz(self):
+        alarm = make_alarm(ADDRESS, "phone_simulator", SNAP, 0.9, GlassesRef(), rule="shape-model",
+                           shape=[8.123456, 0.0, 1.5, 6.0])
+        self.assertEqual(alarm["rule"], "shape-model")
+        self.assertEqual((alarm["rise"], alarm["drop"], alarm["steady"], alarm["held"]), (8.1235, 0.0, 1.5, 6.0))
+        self.assertEqual(alarm["mean_rssi"], -52.1)   # the level inputs are still there
+
+    def test_shape_inputs_are_null_without_the_shape_model(self):
+        for row in (make_alarm(ADDRESS, "x", SNAP, None, GlassesRef()), make_missed(GlassesRef()),
+                    make_missed(GlassesRef(), ADDRESS, "x", SNAP, 0.2)):
+            for key in ("rise", "drop", "steady", "held"):
+                self.assertIsNone(row[key], key)
+
+    def test_missed_report_carries_shape_inputs(self):
+        row = make_missed(GlassesRef(), ADDRESS, "x", SNAP, 0.4, shape=[5.0, 1.0, 2.0, 3.0])
+        self.assertEqual(row["held"], 3.0)
+        self.assertTrue(row["glasses_present"])
+
     def test_demo_flag_and_signature_fallback(self):
         self.assertTrue(make_alarm(ADDRESS, "phone_simulator", SNAP, None, GlassesRef())["demo"])
         real = make_alarm(ADDRESS, "company_0x058e", SNAP, None, GlassesRef())

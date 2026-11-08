@@ -31,11 +31,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BUFFER = ROOT / "data" / "alarm_buffer.jsonl"
+SHAPE_COLUMNS = ("rise", "drop", "steady", "held")   # shape_core.SHAPE; filled by shape_live.py, else NULL
 ENV_CANDIDATES = (ROOT / ".env", ROOT.parent / "tiger-cloud-trinity-gals-credentials.env")
 COLUMNS = (
     "event_id", "time", "device_id", "buzzed", "glasses_present", "annotated_at", "source", "note",
     "glasses_ref", "signature", "demo", "rule",
     "rssi", "mean_rssi", "var_rssi", "slope", "dwell_s", "close_streak_s", "ml_score",
+    *SHAPE_COLUMNS,
 )
 INSERT_SQL = (
     f"INSERT INTO events ({', '.join(COLUMNS)}) "
@@ -97,10 +99,18 @@ def _now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-def _features(snap, ml_score):
+def _shape(shape):
+    """The shape model's four inputs at that second (shape_core.ShapeTracker), or NULLs."""
+    if shape is None:
+        return dict.fromkeys(SHAPE_COLUMNS)
+    return {name: round(float(value), 4) for name, value in zip(SHAPE_COLUMNS, shape)}
+
+
+def _features(snap, ml_score, shape=None):
     if snap is None:
-        return dict.fromkeys(("rssi", "mean_rssi", "var_rssi", "slope", "dwell_s", "close_streak_s", "ml_score"))
-    return {
+        return {**dict.fromkeys(("rssi", "mean_rssi", "var_rssi", "slope", "dwell_s", "close_streak_s", "ml_score")),
+                **_shape(None)}
+    return {**_shape(shape),
         "rssi": int(snap.latest_rssi),
         "mean_rssi": round(snap.mean_rssi, 3),
         "var_rssi": round(snap.var_rssi, 3),
@@ -111,7 +121,7 @@ def _features(snap, ml_score):
     }
 
 
-def make_alarm(address, signature, snap, ml_score, glasses_ref, rule="3s-streak", now=None):
+def make_alarm(address, signature, snap, ml_score, glasses_ref, rule="3s-streak", now=None, shape=None):
     """Row for one buzz, pending annotation. `address` is hashed here and not stored."""
     return {
         "event_id": str(uuid.uuid4()),
@@ -126,11 +136,12 @@ def make_alarm(address, signature, snap, ml_score, glasses_ref, rule="3s-streak"
         "signature": signature or "unknown",
         "demo": signature == "phone_simulator",
         "rule": rule,
-        **_features(snap, ml_score),
+        **_features(snap, ml_score, shape),
     }
 
 
-def make_missed(glasses_ref, address=None, signature=None, snap=None, ml_score=None, source="button", note=None):
+def make_missed(glasses_ref, address=None, signature=None, snap=None, ml_score=None, source="button", note=None,
+                shape=None):
     """Row for glasses that were there with no buzz (FN).
 
     If the Pi was tracking a matching device when the person reported the miss, its features are
@@ -149,7 +160,7 @@ def make_missed(glasses_ref, address=None, signature=None, snap=None, ml_score=N
         "signature": signature,
         "demo": signature == "phone_simulator",
         "rule": None,
-        **_features(snap, ml_score),
+        **_features(snap, ml_score, shape),
     }
 
 

@@ -1,6 +1,6 @@
 """Retrain the linger model with the labelled alarms collected on Tiger Data.
 
-    python3 pi/retrain.py                    # walks in data/runs/ + labelled Tiger events
+    python3 pi/retrain.py                    # walks in data/runs_session1 + 2 (or data/runs/) + labelled Tiger events
     python3 pi/retrain.py --tiger-weight 0.5 # down-weight Tiger rows (like --sim-weight)
     python3 pi/retrain.py --no-demo          # leave out the nRF Connect phone stand-in
     python3 pi/retrain.py --dry-run          # report only, don't write a model
@@ -57,6 +57,20 @@ def events_to_rows(records):
     return x, y
 
 
+def load_walk_folders(names=None):
+    """Walks from each folder, ids prefixed with the folder name so sessions can't collide."""
+    root = train_model.ROOT / "data"
+    if names:
+        folders = [Path(n) for n in names]
+    else:
+        folders = [f for f in (root / "runs_session1", root / "runs_session2") if f.is_dir()] or [root / "runs"]
+    runs = {}
+    for folder in folders:
+        for run_id, rows in train_model.load_runs(folder).items():
+            runs[f"{folder.name}/{run_id}"] = rows
+    return runs, folders
+
+
 def fit(walk_items, tiger_x, tiger_y, tiger_weight):
     x, y = train_model.matrix(walk_items)
     weights = [1.0] * len(y) + [tiger_weight] * len(tiger_y)
@@ -106,6 +120,8 @@ def save(model, info, root):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--runs", nargs="+",
+                        help="walk folders (default: data/runs_session1 and data/runs_session2, else data/runs)")
     parser.add_argument("--tiger-weight", type=float, default=1.0, help="sample weight of Tiger rows (default 1)")
     parser.add_argument("--no-demo", action="store_true", help="skip events from the phone stand-in")
     parser.add_argument("--min-events", type=int, default=1,
@@ -128,8 +144,8 @@ def main(argv=None):
         print(f"Fewer than {args.min_events} labelled events: keeping the current model.")
         return 0
 
-    runs = train_model.load_runs()
-    print(f"Walks: {len(runs)} in {train_model.ROOT / 'data' / 'runs'}")
+    runs, folders = load_walk_folders(args.runs)
+    print(f"Walks: {len(runs)} in {', '.join(str(f) for f in folders)}")
     info = {"tiger_events": len(tiger_y), "tiger_positive": positives, "tiger_weight": args.tiger_weight,
             "include_demo": not args.no_demo, "walks": len(runs), "sklearn": sklearn.__version__,
             "features": list(MODEL_COLUMNS)}

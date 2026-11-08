@@ -1,11 +1,13 @@
 # gcp/: nightly retraining on Google Cloud (T36)
 
-Every night a Cloud Run Job runs `pi/retrain.py`: it reads the labelled alarms from Tiger Data
-(four features + yes/no label, nothing else), adds the walks in `data/runs/`, retrains, and writes
-the model to a private Cloud Storage bucket. The Pi pulls it with `fetch_model.sh`.
+Every night a Cloud Run Job runs `pi/retrain_shape.py`: it reads the labelled alarms from Tiger Data
+(the four shape inputs + yes/no label, nothing else), adds the walks in `data/runs_session1/` and
+`data/runs_session2/`, retrains the shape model, and writes it to a private Cloud Storage bucket, but
+only if the Tiger rows don't make held-out walks worse. The Pi pulls it with `fetch_model.sh`.
+(The level model's `pi/retrain.py` is still in the image; see "Level model" below.)
 
 ```
-Cloud Scheduler 03:00 UTC -> Cloud Run Job (pi/retrain.py) -> gs://<bucket>/model.joblib -> Pi
+Cloud Scheduler 03:00 UTC -> Cloud Run Job (pi/retrain_shape.py) -> gs://<bucket>/shape_model.joblib -> Pi
                                ^ Secret Manager (Tiger URL)
                                ^ Tiger Data events table
 ```
@@ -15,7 +17,7 @@ Cloud Scheduler 03:00 UTC -> Cloud Run Job (pi/retrain.py) -> gs://<bucket>/mode
 | `deploy.sh` | Mac | APIs, bucket, secret, service accounts, image, job, paused schedule. Safe to re-run |
 | `Dockerfile`, `cloudbuild.yaml` | Cloud Build | `debian:<release>-slim` + Debian's `python3-sklearn`, same as the Pi |
 | `lifecycle.json` | bucket | delete versioned models and old object versions after 30 days (matches Tiger's retention) |
-| `fetch_model.sh` | Pi | download, check scikit-learn version matches, keep `model.joblib.prev`, restart `canary` |
+| `fetch_model.sh` | Pi | download `shape_model.joblib` (or `MODEL=level`: `model.joblib`), check it's the right kind of model and the scikit-learn version matches, keep `.prev`, restart `canary` |
 | `../.gcloudignore` | Mac | what gets uploaded to Cloud Build: never `.env` or keys |
 
 ## 1. Once: project and CLI (Mac)
@@ -42,13 +44,13 @@ gcloud run jobs execute side-eye-retrain --region europe-west2 --wait
 gcloud logging read 'resource.type=cloud_run_job AND resource.labels.job_name=side-eye-retrain' --limit 30 --format 'value(textPayload)'
 SCHEDULE=on gcp/deploy.sh <project-id>      # optional: nightly at 03:00 UTC
 ```
-The log shows walks-only vs walks + Tiger vs the 3 s rule on the same held-out walks.
+The log shows walks-only vs walks + Tiger on the same held-out walks (lingers caught, false alarms, nDCF).
 
 ### Testing with dummy data
 ```
 python3 scripts/dummy_events.py add       # 60 labelled events in Tiger, device_id = 'dummy-data'
 gcloud run jobs execute side-eye-retrain --region europe-west4 --wait
-gcloud storage cat gs://<bucket>/models/latest.json
+gcloud storage cat gs://<bucket>/models/shape_latest.json
 python3 scripts/dummy_events.py remove    # delete them again (annotate.py's report counts them meanwhile)
 ```
 
@@ -63,9 +65,14 @@ cd ~/side-eye && gcp/fetch_model.sh <project-id>-side-eye-models
 ```
 Daily pull: `crontab -e` -> `30 3 * * * cd /home/canary/side-eye && gcp/fetch_model.sh <bucket> >> /tmp/fetch_model.log 2>&1`.
 
+## Level model
+The image also holds `pi/retrain.py` (the level model, `model.joblib`, for `canary.py live --use-model`):
+`gcloud run jobs execute side-eye-retrain --region <region> --command python3 --args pi/retrain.py,--out-dir,/models --wait`,
+then on the Pi `MODEL=level gcp/fetch_model.sh <bucket>`.
+
 ## Rollback
-- Pi: `mv model.joblib.prev model.joblib && sudo systemctl restart canary` (the motor uses the 3 s rule, not the model).
-- Bucket: `gcloud storage ls -a gs://<bucket>/model.joblib`, then copy the older `#generation` over it.
+- Pi: `mv shape_model.joblib.prev shape_model.joblib` (shape_live reloads it by itself).
+- Bucket: `gcloud storage ls -a gs://<bucket>/shape_model.joblib`, then copy the older `#generation` over it.
 - Stop nightly retraining: re-run `gcp/deploy.sh` without `SCHEDULE=on`, or `gcloud scheduler jobs pause side-eye-retrain-nightly --location <region>`.
 - Remove everything: delete the project; `rm ~/side-eye-pi-key.json` on the Pi.
 

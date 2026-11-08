@@ -10,8 +10,11 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY pi/ pi/
-COPY data/runs/ data/runs/
+COPY data/runs_session1/ data/runs_session1/
+COPY data/runs_session2/ data/runs_session2/
 
+# Retrains the shape model (the one shape_live.py runs). The level model's pi/retrain.py is still in the
+# image: run the job with --command python3 --args pi/retrain.py,--out-dir,/models to use it instead.
 # TIMESCALE_SERVICE_URL comes from Secret Manager; /models is the Cloud Storage bucket mount.
-ENTRYPOINT ["python3", "pi/retrain.py", "--out-dir", "/models"]
+ENTRYPOINT ["python3", "pi/retrain_shape.py", "--out-dir", "/models"]
 CMD []

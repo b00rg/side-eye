@@ -1,82 +1,117 @@
-"""Run the Pi's real `canary.py live --use-model` loop on a laptop, with a fake radio and button.
+"""Run the Pi's real shape_live.py loop on a laptop, with a fake radio, wire button and Tiger store.
 
-Usage (from the repo root, after scripts/deploy_model3.py has made data/sim_rows.csv):
-  python3 scripts/fake_live.py
+Usage (from the repo root):
+  python3 scripts/fake_live.py                                   # summary of buzzes, labels, uploads
+  python3 scripts/fake_live.py --stream | python3 scripts/live_graph.py --stdin   # watch it as a graph
 
-Builds a throwaway "Pi folder" like /home/canary/canary (code, settings.json, data/runs,
-sim_rows.csv), trains Model 3 there, then runs the unmodified live() with only three things
-swapped: the Bluetooth scanner replays simulated walks' raw readings, the clock runs fast, and
-the feedback button is pressed a few seconds into each linger. Shows alerts, feedback being
-saved, background retraining after 20 new rows, and live picking up the new model.
+Builds a throwaway "Pi folder" (code + settings.json), trains the shape model there on session 1
+(pi/train_shape.py, as on the Pi), then runs the unmodified shape_live main() with only these swapped:
+- the Bluetooth scanner replays recorded session-2 walks (each second's smoothed signal, sent as five
+  adverts a second), with quiet gaps between walks;
+- the clock runs fast;
+- the wire button: the "wearer" touches it 3 s after each buzz on a linger (glasses there) and holds
+  it after a buzz on any other walk (false alarm);
+- Tiger Data: rows are kept in memory and summarised at the end (nothing leaves the laptop).
+
+A pipeline test, not a measurement: walks run back to back, so each walk's shape history carries over
+into the next, and the replayed adverts are each second's already-smoothed value. For results use
+nist/shape_confirm.py.
 """
+import argparse
 import asyncio
-import glob
+import builtins
+import contextlib
+import csv
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-import time
+from collections import deque
 from pathlib import Path
 from types import SimpleNamespace
 
-import pandas as pd
-
 REPO = Path(__file__).resolve().parent.parent
-PRESS_AFTER_STOP_S = 4     # the wearer presses the button 4 s after someone stops
-GAP_S = 20                 # quiet seconds between walks
-SESSION = ["linger", "passer", "linger", "bag", "linger", "passer", "far", "linger"]
+GAP_S = 20                  # quiet seconds between walks
+PRESS_AFTER_BUZZ_S = 3
+TEST = REPO / "data" / "runs_session2"
 
 
 def make_pi_folder(root):
-    for name in ("canary.py", "canary_core.py", "train_model.py", "feedback.py"):
+    for name in ("canary.py", "canary_core.py", "train_model.py", "shape_core.py", "shape_live.py",
+                 "train_shape.py", "alarm_store.py"):
         shutil.copy(REPO / "pi" / name, root / name)
     shutil.copy(REPO / "settings.json", root / "settings.json")
-    shutil.copy(REPO / "data" / "sim_rows.csv", root / "sim_rows.csv")
-    (root / "data").mkdir()
-    shutil.copytree(REPO / "data" / "runs_session1", root / "data" / "runs")   # real walks to train on
-    out = subprocess.run([sys.executable, "-W", "ignore", "train_model.py", "--sim-rows", "sim_rows.csv"],
+    out = subprocess.run([sys.executable, "-W", "ignore", "train_shape.py", str(REPO / "data" / "runs_session1")],
                          cwd=root, capture_output=True, text=True, check=True).stdout
-    print("Pi folder ready; trained:", out.strip().splitlines()[-1].split("/")[-1])
+    print("Pi folder ready:", out.strip().splitlines()[-1])
 
 
 def session_readings():
-    """Concatenate raw readings of simulated walks (nist/sim) into one timeline, with press times."""
-    readings, presses, t0 = [], [], 0.0
-    for kind in SESSION:
-        lab = sorted(glob.glob(str(REPO / "nist" / "sim" / f"*_{kind}_labels.csv")))[len(readings) % 7]
-        rd = pd.read_csv(lab.replace("_labels", "_readings"))
-        lb = pd.read_csv(lab)
-        readings += [(t0 + t, int(r)) for t, r in zip(rd.t_s, rd.rssi)]
-        if kind == "linger":
-            stop = lb.second[lb.label == 1].iloc[0] - 3
-            presses.append(t0 + stop + PRESS_AFTER_STOP_S)
-        t0 += len(lb) + GAP_S
-    return readings, presses, t0
+    """Session-2 walks back to back: (time, rssi) adverts and (start, end, kind) per walk."""
+    readings, walks, t0 = [], [], 0.0
+    for path in sorted(TEST.glob("*.csv")):
+        with path.open(newline="") as f:
+            rows = sorted(csv.DictReader(f), key=lambda r: float(r["t"]))
+        start = float(rows[0]["t"])
+        for r in rows:
+            t = t0 + float(r["t"]) - start
+            readings += [(t + k * 0.2, round(float(r["mean_rssi"]))) for k in range(5)]
+        length = float(rows[-1]["t"]) - start + 1
+        walks.append((t0, t0 + length, rows[0]["scenario"]))
+        t0 += length + GAP_S
+    return readings, walks, t0
+
+
+class FakeStore:
+    def __init__(self):
+        self.rows, self.labels = [], []
+
+    def record(self, row):
+        self.rows.append(row)
+
+    def label(self, row, glasses_present):
+        self.labels.append((row, glasses_present))
+
+    def close(self):
+        pass
+
+
+class FakeButton:
+    def __init__(self):
+        self.durations = deque()
+
+    def presses(self):
+        while self.durations:
+            yield self.durations.popleft()
+
+    def close(self):
+        pass
 
 
 def main():
-    import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--stream", action="store_true",
-                    help="print live()'s output unfiltered, paced in real time (pipe into scripts/live_graph.py --stdin)")
+                    help="print shape_live's output unfiltered, paced in real time (pipe into live_graph.py --stdin)")
     ap.add_argument("--speed", type=float, default=1.0, help="with --stream: 2 = twice real time")
     args = ap.parse_args()
     root = Path(tempfile.mkdtemp(prefix="side-eye-pi-"))
-    if args.stream:   # keep stdout clean for the graph
-        with open(os.devnull, "w") as quiet, __import__("contextlib").redirect_stdout(quiet):
-            make_pi_folder(root)
-    else:
+    with contextlib.redirect_stdout(open(os.devnull, "w")) if args.stream else contextlib.nullcontext():
         make_pi_folder(root)
     sys.path.insert(0, str(root))
     os.chdir(root)
-    import canary  # the Pi's own code, from the Pi folder
+    import alarm_store  # noqa: E402  (the Pi folder's copies)
+    import canary  # noqa: E402
+    import shape_live  # noqa: E402
 
-    readings, press_times, end = session_readings()
+    readings, walks, end = session_readings()
     clock = {"t": 0.0}
-    state = {"callback": None, "i": 0}
-    presses = __import__("queue").SimpleQueue()
-    pending_presses = list(press_times)
+    state = {"callback": None, "i": 0, "buzzes": 0}
+    store, button = FakeStore(), FakeButton()
+    pending = []   # (time, touch duration)
+
+    def walk_at(t):
+        return next((kind for start, stop, kind in walks if start <= t <= stop + 5), None)
 
     class FakeScanner:
         def __init__(self, callback):
@@ -99,58 +134,64 @@ def main():
             state["callback"](SimpleNamespace(address="AA:BB:CC:DD:EE:FF"), adv)
             state["i"] += 1
         clock["t"] = target
-        while pending_presses and pending_presses[0] <= target:
-            presses.put("button")
-            pending_presses.pop(0)
-        if clock["t"] > end + 40:
+        while pending and pending[0][0] <= target:
+            button.durations.append(pending.pop(0)[1])
+        if clock["t"] > end + 10:
             raise KeyboardInterrupt
         await real_sleep(seconds / args.speed if args.stream else 0)
 
-    canary.new_scanner = FakeScanner
-    canary.time = SimpleNamespace(monotonic=lambda: clock["t"])
-    canary.asyncio.sleep = fast_sleep
-    canary.start_presses = lambda use_button: (presses, None)
-    real_retrain = canary.retrain_in_background
+    async def fake_buzz(motor, pulses, on_s, off_s):
+        pass
 
-    def retrain_and_wait(path):   # the fake clock doesn't wait for the background job, so we do
-        proc = real_retrain(path)
-        proc.wait()
-        time.sleep(1.1)          # make sure model.joblib gets a new modification time
-        return proc
-    canary.retrain_in_background = retrain_and_wait
+    real_record = store.record
+
+    def record(row):   # the wearer reacts to each buzz
+        real_record(row)
+        if row["buzzed"]:
+            kind = walk_at(clock["t"])
+            pending.append((clock["t"] + PRESS_AFTER_BUZZ_S, 0.2 if kind == "linger" else 2.0))
+    store.record = record
+
+    shape_live.new_scanner = FakeScanner
+    shape_live.time = canary.time = SimpleNamespace(monotonic=lambda: clock["t"])
+    shape_live.asyncio = SimpleNamespace(sleep=fast_sleep)
+    shape_live.buzz = fake_buzz
+    canary.WireButton = lambda: button
+    alarm_store.AlarmStore.from_env = staticmethod(lambda: store)
+    run_args = SimpleNamespace(no_motor=True, no_db=False, no_button=False, alert=0.8, cooldown=15.0,
+                               pulses=3, on=0.4, off=0.15)
 
     if args.stream:
         try:
-            asyncio.run(canary.live(with_motor=False, use_model=True, feedback_on=True))
+            asyncio.run(shape_live.main(run_args))
         except (KeyboardInterrupt, BrokenPipeError):
             pass
         return
-    print(f"Session: {', '.join(SESSION)} ({len(readings)} readings, {end / 60:.1f} min of fake time)\n")
-    interesting = ("ALERT", "Feedback", "retrain", "Model updated", "Side Eye live", "feedback rows so far", "No model")
-    real_print = print
-    import builtins
 
-    def quiet_print(*args, **kw):
-        text = " ".join(str(a) for a in args)
+    print(f"Replaying {len(walks)} session-2 walks ({end / 60:.1f} min of fake time)\n")
+    interesting = ("ALERT", "Labelled", "Reported", "Side Eye live", "Wire button", "Model updated")
+    real_print = print
+
+    def quiet_print(*a, **kw):
+        text = " ".join(str(x) for x in a)
         if any(k in text for k in interesting):
-            real_print(f"[{clock['t']:6.0f}s] {text}", **{k: v for k, v in kw.items() if k != "flush"})
+            kind = walk_at(clock["t"]) or "gap"
+            real_print(f"[{clock['t']:6.0f}s {kind:>7}] {text.split(' | rise')[0]}",
+                       **{k: v for k, v in kw.items() if k != "flush"})
     builtins.print = quiet_print
     try:
-        asyncio.run(canary.live(with_motor=False, use_model=True, feedback_on=True))
+        asyncio.run(shape_live.main(run_args))
     except KeyboardInterrupt:
         pass
     finally:
         builtins.print = real_print
 
-    from feedback import FeedbackStore
-    store = FeedbackStore(root / "feedback.db")
-    counts = store.db.execute("SELECT source, label, COUNT(*) FROM feedback_rows GROUP BY source, label").fetchall()
-    print("\nfeedback.db on the 'Pi':", ", ".join(f"{s} label {l}: {n} rows" for s, l, n in counts))
-    print("retrain.log (last lines):")
-    log = (root / "retrain.log").read_text().strip().splitlines() if (root / "retrain.log").exists() else []
-    for line in log[-3:]:
-        print("  " + line.split(str(root))[-1])
-    print(f"\nPi folder left at {root} for inspection.")
+    buzzes = [r for r in store.rows if r["buzzed"]]
+    tp = sum(1 for _, present in store.labels if present)
+    print(f"\nWould upload to Tiger: {len(buzzes)} buzzes (rule {buzzes[0]['rule'] if buzzes else '-'}), "
+          f"labelled {tp} glasses there / {len(store.labels) - tp} false alarm, "
+          f"every row with shape inputs: {all(r['rise'] is not None for r in store.rows)}")
+    print(f"Pi folder left at {root} for inspection.")
 
 
 if __name__ == "__main__":

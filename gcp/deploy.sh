@@ -1,11 +1,11 @@
 #!/bin/sh
 # Run FROM the Mac (repo root) with the gcloud CLI logged in. Safe to re-run: creates what's missing,
-# rebuilds the image with the current pi/ and data/runs/, and updates the job.
+# rebuilds the image with the current pi/ and data/runs_session*/, and updates the job.
 #   gcp/deploy.sh <project-id>
 # Optional environment:
 #   REGION=europe-west2        DEBIAN_RELEASE=bookworm (match the Pi: cat /etc/os-release)
 #   BUCKET=<project>-side-eye-models
-#   RETRAIN_ARGS=--tiger-weight,0.5,--no-demo   (comma-separated, passed to pi/retrain.py)
+#   RETRAIN_ARGS=--tiger-weight,0.5,--no-demo   (comma-separated, passed to pi/retrain_shape.py)
 #   SIDE_EYE_ENV=<file with TIMESCALE_SERVICE_URL> (default .env in the repo root)
 #   SCHEDULE=off (default: nightly retrain paused, no compute used) | on (retrain at 03:00 UTC)
 set -eu
