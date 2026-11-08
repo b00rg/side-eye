@@ -60,17 +60,6 @@ far: quiet (walk-pasts can still occasionally trigger it; 3/6 did in the confirm
 - Demo mode sidesteps that by only reacting to **very close contact**, where the signal is
   unambiguous.
 
-## Why the demo uses a rule, not a model: `docs/figures/concept.png`
-Same methods, folds and score (TC4TL nDCF: misses + false alarms, lower is better, 1.0 = never
-buzzing) in two worlds. Left, simulated walks where the signal falls off with distance: the models
-beat the 3-second rule clearly (Model 1 0.12, Models 2-3 0.25, rule 1.50). Right, our real room
-(session 1): nothing beats never buzzing (rule 1.88, models 1.00-1.25). The models work when the
-signal carries distance; our hardware in a real room doesn't provide it, so the next step is
-better sensing (second receiver, motion sensor), not a better model. Left-hand walks are simulated
-for both training and testing, so they show the concept, not real-world performance. Rebuild with
-`python3 scripts/concept_figure.py --out docs/figures/concept.png`. (Model 2's real-room bar uses
-the current simulator, with far walks at 4 m; the pre-registered session 1 run gave Model 2 1.12.)
-
 ## Real-world check on public data: H0H1 (`nist/h0h1_eval.py`)
 Does the model beat a simple threshold on **real** Bluetooth data that isn't ours? MIT Lincoln
 Laboratory's H0H1 dataset (PACT, CC BY 4.0): people living together, iPhones in hands or pockets,
@@ -87,8 +76,7 @@ Laboratory's H0H1 dataset (PACT, CC BY 4.0): people living together, iPhones in 
 Balanced accuracy; 50% = coin flip. The model at best ties the threshold and never beats it, and
 neither gets much past ~60-65%. This matches session 1 and NIST IR 8437: **Bluetooth signal
 strength alone carries little distance information in real spaces**, so the limit is the sensor,
-not the model. The simulated "models win" panel in `docs/figures/concept.png` only holds where the
-signal tracks distance cleanly, which real rooms don't provide. Next steps are better sensing
+not the model. Next steps are better sensing
 (a second receiver, a motion sensor on the wearer, UWB), not a better model.
 
 ## Assumptions and limits (say these out loud)

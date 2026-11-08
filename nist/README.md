@@ -129,8 +129,7 @@ come from `nist/obstruction_losses.py` (see *Used by the simulation*).
   puts the cutoff midway (in dB) between the 2 m and 6 m medians, which is about **3.5 m**
   (the geometric mean, sqrt(2 x 6)). Walking 1.2 m/s with the closest approach at 1.5 m,
   someone is inside 3.5 m for about **5.2 s** (6.2 s at 1.0 m/s). So with a clean signal a 3 s
-  rule buzzes at most walk-pasts, and at lingerers before they stop. On the working-case
-  placeholder walks the rule only becomes good at 5-6 s. Whether 3 s holds up is for the
+  rule buzzes at most walk-pasts, and at lingerers before they stop (as session 1 showed). Whether 3 s holds up is for the
   rule-wait sweep on the real walks to show.
 - **The real test is on our walks** (added to T18): rerun the rule with the wait set to
   1-6 s and count lingers caught, walk-pasts wrongly buzzed and time to buzz.

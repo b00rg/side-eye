@@ -37,10 +37,10 @@ SCHEMA = """
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 CREATE TABLE IF NOT EXISTS calibration (
     id SERIAL PRIMARY KEY, loaded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    near_median REAL, far_median REAL, threshold_dbm REAL NOT NULL, placeholder BOOLEAN NOT NULL);
+    near_median REAL, far_median REAL, threshold_dbm REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS walks (
     run_id TEXT PRIMARY KEY, scenario TEXT NOT NULL, started_at TIMESTAMPTZ NOT NULL,
-    n_rows INTEGER NOT NULL, placeholder BOOLEAN NOT NULL);
+    n_rows INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS walk_rows (
     time TIMESTAMPTZ NOT NULL, run_id TEXT NOT NULL REFERENCES walks(run_id) ON DELETE CASCADE,
     t DOUBLE PRECISION NOT NULL, mean_rssi REAL, var_rssi REAL, slope REAL, dwell_s REAL,
@@ -78,22 +78,20 @@ def copy_rows(cur, table, cols, rows):
 
 def load_walks(cur):
     runs = os.path.join(ROOT, "data", "runs")
-    placeholder = os.path.exists(os.path.join(runs, "PLACEHOLDER"))
     settings = json.load(open(os.path.join(ROOT, "settings.json")))
-    cur.execute("INSERT INTO calibration (near_median, far_median, threshold_dbm, placeholder) VALUES (%s, %s, %s, %s)",
-                (settings.get("near_median"), settings.get("far_median"), settings["threshold_dbm"], placeholder))
+    cur.execute("INSERT INTO calibration (near_median, far_median, threshold_dbm) VALUES (%s, %s, %s)",
+                (settings.get("near_median"), settings.get("far_median"), settings["threshold_dbm"]))
     files = sorted(glob.glob(os.path.join(runs, "*.csv")))
     for path in files:
         d = pd.read_csv(path)
         run_id = d.run_id.iloc[0]
         t0, start = d.t.iloc[0], started_at(run_id)
         cur.execute("DELETE FROM walks WHERE run_id = %s", (run_id,))
-        cur.execute("INSERT INTO walks VALUES (%s, %s, %s, %s, %s)",
-                    (run_id, d.scenario.iloc[0], start, len(d), placeholder))
+        cur.execute("INSERT INTO walks VALUES (%s, %s, %s, %s)", (run_id, d.scenario.iloc[0], start, len(d)))
         copy_rows(cur, "walk_rows", ["time", "run_id", "t", *ROW_COLS, "label"],
                   [(start + timedelta(seconds=float(r.t - t0)), run_id, float(r.t),
                     *[float(r[c]) for c in ROW_COLS], int(r.label)) for _, r in d.iterrows()])
-    return f"{len(files)} walks{' (placeholder)' if placeholder else ''}"
+    return f"{len(files)} walks"
 
 
 def load_nist(cur):
@@ -174,20 +172,18 @@ def cmd_load(url, feedback, mitre, sim_only=False):
 def cmd_export(url, out):
     os.makedirs(os.path.join(out, "data", "runs"), exist_ok=True)
     with connect(url) as conn:
-        cal = conn.execute("SELECT near_median, far_median, threshold_dbm, placeholder FROM calibration "
+        cal = conn.execute("SELECT near_median, far_median, threshold_dbm FROM calibration "
                            "ORDER BY id DESC LIMIT 1").fetchone()
         with open(os.path.join(out, "settings.json"), "w") as f:
             json.dump({"threshold_dbm": cal[2], "near_median": cal[0], "far_median": cal[1]}, f, indent=2)
             f.write("\n")
-        walks = conn.execute("SELECT run_id, scenario, placeholder FROM walks ORDER BY run_id").fetchall()
-        for run_id, scenario, _ in walks:
+        walks = conn.execute("SELECT run_id, scenario FROM walks ORDER BY run_id").fetchall()
+        for run_id, scenario in walks:
             d = pd.DataFrame(conn.execute(f"SELECT t, {', '.join(ROW_COLS)}, label FROM walk_rows WHERE run_id = %s "
                                           "ORDER BY time", (run_id,)).fetchall(), columns=["t", *ROW_COLS, "label"])
             d.insert(0, "scenario", scenario)
             d.insert(0, "run_id", run_id)
             d.to_csv(os.path.join(out, "data", "runs", f"{run_id}.csv"), index=False)
-        if walks and walks[0][2]:
-            open(os.path.join(out, "data", "runs", "PLACEHOLDER"), "w").close()
         sim = pd.DataFrame(conn.execute(f"SELECT {', '.join(FEATS)}, label FROM sim_rows ORDER BY id").fetchall(),
                            columns=[*FEATS, "label"])
         sim.to_csv(os.path.join(out, "sim_rows.csv"), index=False)

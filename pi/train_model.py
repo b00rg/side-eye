@@ -20,9 +20,9 @@ from canary_core import MODEL_COLUMNS, project_root
 ROOT = project_root(__file__)  # repo root in the repo; this folder when deployed flat on the Pi
 
 
-def load_runs():
+def load_runs(folder=None):
     runs = {}
-    for path in sorted((ROOT / "data" / "runs").glob("*.csv")):
+    for path in sorted((Path(folder) if folder else ROOT / "data" / "runs").glob("*.csv")):
         with path.open(newline="") as source:
             rows = list(csv.DictReader(source))
         if not rows:
@@ -134,6 +134,7 @@ def main(argv=()):
     ap.add_argument("--sim-rows", help="simulated rows CSV (nist/export_sim_rows.py): trains Model 3 instead of Model 1")
     ap.add_argument("--sim-weight", type=float, default=0.2, help="weight of each simulated row (default 0.2)")
     ap.add_argument("--feedback", help="feedback.db from the button (canary.py live): adds those rows to training")
+    ap.add_argument("--runs", help="folder of walk CSVs to train on (default data/runs)")
     args = ap.parse_args(list(argv))
     feedback = None
     if args.feedback and Path(args.feedback).exists():
@@ -148,7 +149,7 @@ def main(argv=()):
         print(f"Model 3: real walks + {len(sim[0])} simulated rows (weight {args.sim_weight})")
     else:
         print("Model 1: real walks only")
-    runs = load_runs()
+    runs = load_runs(args.runs)
     if not runs:
         raise SystemExit("No CSV files in data/runs. Record scenarios first.")
     folds = balanced_group_folds(runs)

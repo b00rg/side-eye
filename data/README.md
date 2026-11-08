@@ -13,13 +13,14 @@ Rule: **never commit recordings that contain anything sensitive** (other people'
 MAC addresses, locations). Ours only contain our own test phone's advertisement
 (company ID 0x058E, data CA01), so they **can** be committed.
 
-**Right now `data/runs/` holds 24 placeholder walks** (made by `scripts/make_placeholder_runs.py`,
-marked by the empty `data/runs/PLACEHOLDER` file) and `settings.json` holds placeholder calibration,
-so the pipeline can run before recording. To swap in the real walks, from the repo root:
+## Real walk folders
+- `data/runs_session1/`: session 1, 24 walks + its `settings.json` (pre-registered results).
+- `data/runs_confirm/`: the 16 confirmation walks for the shape model (Amendment 4).
+- `data/runs/`: empty; new recordings go here. To bring walks from the Pi (Lili's `canary.py` saves
+  to `~/data/runs/` on the Pi):
 ```
-rm data/runs/*.csv data/runs/PLACEHOLDER
-scp canary@canary.local:/home/canary/canary/data/runs/*.csv data/runs/
-scp canary@canary.local:/home/canary/canary/settings.json settings.json
+scp 'canary@canary.local:~/data/runs/*.csv' data/runs/
+scp canary@canary.local:~/settings.json settings.json
 ```
 
 ## data/external/: public datasets (not committed)

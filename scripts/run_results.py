@@ -67,11 +67,9 @@ def check_inputs(log):
 
     log("Inputs")
     log(f"  settings.json: 2 m {settings.get('near_median')} dBm, 6 m {settings.get('far_median')} dBm, cutoff {cutoff} dBm")
-    log(f"  walks: {len(files)} in data/runs/  " + ", ".join(f"{k} {kinds.get(k, 0)}" for k in KINDS)
+    log(f"  walks: {len(files)} in {os.path.relpath(RUNS, ROOT)}/  " + ", ".join(f"{k} {kinds.get(k, 0)}" for k in KINDS)
         + (f", unknown {kinds['unknown']}" if "unknown" in kinds else ""))
     log(f"  reading rate: median packet_rate_hz = {rate}/s")
-    if os.path.exists(os.path.join(RUNS, "PLACEHOLDER")):
-        log("  WARNING: data/runs/PLACEHOLDER exists: these are placeholder walks. Don't report these numbers.")
     wrong = {k: (kinds.get(k, 0), n) for k, n in EXPECTED.items() if kinds.get(k, 0) != n}
     if wrong or "unknown" in kinds:
         log("  WARNING: walk mix differs from the plan (8 linger, 8 passer, 4 far, 2 bag, 2 blocked): "
@@ -109,8 +107,12 @@ def t25_decision(log):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-ablations", action="store_true")
+    ap.add_argument("--runs", help="folder of walk CSVs (default data/runs), e.g. data/runs_session1")
     ap.add_argument("--seeds", default="0", help="simulation seeds for the ablations, e.g. 0,1,2")
     args = ap.parse_args()
+    global RUNS
+    if args.runs:
+        RUNS = os.path.abspath(args.runs)
     os.makedirs(OUT, exist_ok=True)
     log = Log(os.path.join(OUT, "log.txt"))
     cutoff, rate = check_inputs(log)
@@ -119,7 +121,7 @@ def main():
     anchor_args = ["--anchor", anchor] if os.path.exists(anchor) else []
     log(f"  simulation anchored to: {'nist/sim_anchor.json (session 1 walks)' if anchor_args else 'calibration medians'}")
 
-    run(log, "1. Lili's training printout (pi/train_model.py)", [p("pi", "train_model.py")], cwd=ROOT)
+    run(log, "1. Lili's training printout (pi/train_model.py)", [p("pi", "train_model.py"), "--runs", RUNS], cwd=ROOT)
     run(log, "2. Simulate 300 walks (seed 0)", [p("nist", "simulate_walks.py"), p("data", "external", "mitre_rssi.csv"),
                                                 p("settings.json"), sim, "--n", "300", "--rate", str(rate), "--seed", "0", *anchor_args])
     run(log, "3. Rule vs Models 1-3, pre-registered tests, sweeps",

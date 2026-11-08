@@ -74,9 +74,6 @@ def load_sim(sim_dir, cutoff):
 
 
 def load_real(real_dir):
-    if os.path.exists(os.path.join(real_dir, "PLACEHOLDER")):
-        print(f"WARNING: {real_dir} holds placeholder walks (scripts/make_placeholder_runs.py), "
-              "not recorded ones. Don't report these numbers.\n")
     walks = []
     for p in sorted(glob.glob(os.path.join(real_dir, "*.csv"))):
         f = pd.read_csv(p)

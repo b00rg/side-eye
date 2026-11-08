@@ -1,7 +1,6 @@
 # Runbook: from 24 walks to Model 3 on the Pi
 
-Everything below has been run end to end on the placeholder walks. With real walks the commands
-are the same; only the numbers change.
+Everything below has been run end to end on real walks (session 1 and the confirmation set).
 
 ## 0. Transmitter
 Power the UNO Q (`zeus`) from a power bank; it broadcasts by itself after ~25 s
@@ -14,11 +13,11 @@ Calibrate with zeus worn at head height, then record the 24 walks in the run-she
 
 ## 2. Bring the walks to the Mac (repo root)
 ```
-rm data/runs/*.csv data/runs/PLACEHOLDER
+rm -f data/runs/*.csv
 scp canary@canary.local:/home/canary/canary/data/runs/*.csv data/runs/
 scp canary@canary.local:/home/canary/canary/settings.json settings.json
 ```
-Delete the placeholders first, or results silently mix 48 walks.
+Clear the folder first, or results silently mix walks from different sessions.
 
 ## 3. Results (Mac, about a minute)
 ```
@@ -89,8 +88,7 @@ pipeline, writes `data/sim_rows.csv` and stores it back in Tiger. The Pi then pu
 `bash update_from_cloud.sh user@vultr-ip` (the VM can't reach the Pi behind the hotspot, so the Pi pulls).
 
 ## Demo note
-If Model 3 drives the motor, hold the stage stop for **15-20 s**, not the guide's 6 s: on the
-placeholder walks it buzzed 5 s after the stop on median, but up to 13 s on some walks. Rehearse it.
+Demo commands and settings: `docs/DEMO.md` (shape model: walk in from 6 m+, stop ~2 m, stay ~15 s).
 
 ## If T25 says keep the rule
 Skip step 4. The Pi keeps `live` with the 3-second rule (the guide's `canary.service`), and the

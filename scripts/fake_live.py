@@ -34,7 +34,7 @@ def make_pi_folder(root):
     shutil.copy(REPO / "settings.json", root / "settings.json")
     shutil.copy(REPO / "data" / "sim_rows.csv", root / "sim_rows.csv")
     (root / "data").mkdir()
-    shutil.copytree(REPO / "data" / "runs", root / "data" / "runs")
+    shutil.copytree(REPO / "data" / "runs_session1", root / "data" / "runs")   # real walks to train on
     out = subprocess.run([sys.executable, "-W", "ignore", "train_model.py", "--sim-rows", "sim_rows.csv"],
                          cwd=root, capture_output=True, text=True, check=True).stdout
     print("Pi folder ready; trained:", out.strip().splitlines()[-1].split("/")[-1])

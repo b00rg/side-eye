@@ -9,7 +9,7 @@ cd "$(dirname "$0")/../.."
 PY="${PYTHON:-.venv/bin/python}"
 
 echo "== 1. Export walks, calibration, simulated rows and feedback from Tiger"
-rm -f data/runs/*.csv data/runs/PLACEHOLDER
+rm -f data/runs/*.csv
 "$PY" scripts/tiger.py export .
 
 echo "== 2. Full results pipeline"

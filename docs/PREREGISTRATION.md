@@ -160,3 +160,5 @@ whatever the result, alongside the level model, the rule and never buzzing.
 (Amendment 4 note: two walks from an aborted session-2 attempt (a linger and a passer, recorded 8 Nov
 00:57-00:58, before this amendment) were deleted from the Pi unanalysed before the confirmation
 walks were recorded. Session 2 was abandoned; the confirmation walks replace it.)
+
+(Note, 8 Nov 2026: the placeholder-walk generator mentioned in Amendment 1, `scripts/make_placeholder_runs.py`, has since been removed from the repo; it remains in git history.)
