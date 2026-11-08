@@ -20,9 +20,11 @@ def project_root(script):
 
     Inside the repo the scripts sit in pi/, so it's the repo root. Deployed flat (the guide's
     /home/canary/canary from Canary_code.zip) it's the scripts' own folder.
+    The Cloud Run image (gcp/Dockerfile) has /app/pi and /app/data but no nist/, so any of
+    nist/, data/ or gcp/ beside pi/ marks the repo layout.
     """
     here = Path(script).resolve().parent
-    if here.name == "pi" and (here.parent / "nist").is_dir():
+    if here.name == "pi" and any((here.parent / name).is_dir() for name in ("nist", "data", "gcp")):
         return here.parent
     return here
 
