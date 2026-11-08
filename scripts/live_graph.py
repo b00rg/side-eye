@@ -219,95 +219,129 @@ def _runs(rows, on):
     return out
 
 
-def draw_demo(fig, axes, feed, window_s, title):
-    """Audience view: one signal line, and below it when each method thinks someone is lingering.
+DEMO_BG, DEMO_TRACK, DEMO_LID = "#fbf7f2", "#ede7df", "#e9dfd3"   # warm paper, empty track, eyelid
 
-    Header: Side Eye's verdict (left) and the old 3-second strength rule's (right). Tracks: blue where the
-    shape model is over its alert level (dot = buzz); green where the strength rule's near streak is >= 3 s.
-    Colours match docs/figures (shape model blue, 3-second rule green); all text stays in ink.
-    """
+
+def _draw_eye(ax, look, lidded, active):
+    """A little eye: look = 0 (ahead) .. 1 (full side-eye); lidded = half-closed lid; active = blue iris."""
+    from matplotlib.patches import Circle, Ellipse, Rectangle
+
+    ax.clear()
+    ax.set_facecolor(DEMO_BG)
+    ax.axis("off")
+    ax.set_aspect("equal")
+    ax.set_xlim(-1.35, 1.35)
+    ax.set_ylim(-1.0, 1.0)
+    white = Ellipse((0, 0), 2.3, 1.35, fc="white", ec=INK, lw=2.5, zorder=1)
+    ax.add_patch(white)
+    x = 0.62 * look
+    for patch in (Circle((x, 0), 0.47, fc=SIGNAL if active else MUTED, zorder=2),
+                  Circle((x, 0), 0.22, fc=INK, zorder=3),
+                  Circle((x - 0.12, 0.13), 0.08, fc="white", zorder=4)):
+        ax.add_patch(patch)
+        patch.set_clip_path(white)
+    if lidded:
+        lid = Rectangle((-1.3, 0.12), 2.6, 1.0, fc=DEMO_LID, ec="none", zorder=5)
+        ax.add_patch(lid)
+        lid.set_clip_path(white)
+        edge = ax.plot([-1.2, 1.2], [0.12, 0.12], color=INK, lw=2.5, zorder=6, solid_capstyle="round")[0]
+        edge.set_clip_path(white)
+    ax.add_patch(Ellipse((0, 0), 2.3, 1.35, fc="none", ec=INK, lw=2.5, zorder=7))
+
+
+def _runs(rows, on):
+    """Contiguous stretches where on(row) is true -> [(start, end)], one second per row."""
+    out, start, prev = [], None, None
+    for r in rows:
+        if on(r) and start is None:
+            start = r["t"]
+        elif not on(r) and start is not None:
+            out.append((start, prev + 1))
+            start = None
+        prev = r["t"]
+    if start is not None:
+        out.append((start, prev + 1))
+    return out
+
+
+def draw_demo(fig, axes, feed, window_s, title):
+    """Audience view: a side-eyeing eye + verdict, one soft signal line, and when each method thinks
+    someone is lingering (blue = Side Eye's shape model, green = the old 3-second strength rule)."""
+    eye, head, sig, tracks = axes
     rows, notes, _ = feed.snapshot()
-    head, sig, tracks = axes
-    for ax in axes:
+    for ax in (head, sig, tracks):
         ax.clear()
-        ax.set_facecolor(SURFACE)
+        ax.set_facecolor(DEMO_BG)
         for side in ax.spines.values():
             side.set_visible(False)
-        ax.tick_params(colors=INK_2, length=0, labelsize=11)
+        ax.tick_params(colors=INK_2, length=0, labelsize=12)
     head.axis("off")
     now = rows[-1]["t"] if rows else 0.0
     left, right = max(0.0, now - window_s), max(window_s, now) + 1
     level, last = feed.alert_level, (rows[-1] if rows else None)
     score = last["score"] if last else None
     buzzed = any(r["alert"] for r in rows if r["t"] >= now - 4)
-
     if last is None or score is None:
-        verdict, active = "Waiting for signal", False
+        verdict, look, lidded, active = "waiting for glasses...", 0, False, False
     elif buzzed:
-        verdict, active = "Someone's lingering", True
+        verdict, look, lidded, active = "someone's lingering!", 1, True, True
     elif score >= level:
-        verdict, active = "They're staying", True
+        verdict, look, lidded, active = "they're staying...", 1, True, True
     elif score >= 0.3:
-        verdict, active = "Coming closer", False
+        verdict, look, lidded, active = "hmm, coming closer", 0.6, False, False
     else:
-        verdict, active = "Just passing", False
-    rule_on = bool(last and last["streak"] >= 3.0)
+        verdict, look, lidded, active = "just passing by", 0, False, False
+    _draw_eye(eye, look, lidded, active)
 
-    def label(x, ha, kicker, text, dot, size):
-        head.text(x, 0.92, kicker, transform=head.transAxes, ha=ha, va="top", fontsize=10, color=INK_2,
-                  fontweight="bold")
-        t = head.text(x, 0.52, text, transform=head.transAxes, ha=ha, va="center", fontsize=size, color=INK)
-        return t
-    label(0.0, "left", "S I D E   E Y E", verdict, active, 26)
-    if active:
-        head.plot([-0.012], [0.52], "o", ms=11, color=SIGNAL, transform=head.transAxes, clip_on=False)
-    if score is not None:
-        head.text(0.0, 0.12, f"confidence {score:.0%}" + ("   ·   buzzed" if buzzed else ""),
-                  transform=head.transAxes, fontsize=12, color=INK_2, va="center")
-    label(1.0, "right", "S T R E N G T H   R U L E", "Would buzz" if rule_on else "Quiet", rule_on, 18)
-    if rule_on:   # dot to the left of the right-aligned verdict, so it never touches the edge
-        head.plot([0.80], [0.52], "o", ms=9, color=RULE_C, transform=head.transAxes, clip_on=False)
+    head.set_xlim(0, 1)
+    head.set_ylim(0, 1)
+    head.text(0.0, 0.62, verdict, fontsize=28, color=INK, va="center", fontweight="demibold")
+    sub = f"{score:.0%} sure someone's staying" if score is not None else "listening for our transmitter"
+    head.text(0.0, 0.2, sub, fontsize=13, color=INK_2, va="center")
+    rule_on = bool(last and last["streak"] >= 3.0)
+    head.text(1.0, 0.62, "old strength rule", fontsize=12, color=INK_2, va="center", ha="right")
+    head.text(1.0, 0.2, "would buzz" if rule_on else "quiet", fontsize=16, color=INK, va="center", ha="right",
+              fontweight="demibold" if rule_on else "normal")
     recent = [n for n in notes if n[0] >= now - 8 and ("TP" in n[1] or "FP" in n[1] or n[1].startswith("Reported"))]
     if recent:
         text = recent[-1][1]
-        head.text(1.0, 0.12, "labelled: glasses there" if "TP" in text else
+        head.text(0.55, 0.2, "labelled: glasses there" if "TP" in text else
                   "labelled: false alarm" if "FP" in text else "reported: missed glasses",
-                  transform=head.transAxes, ha="right", fontsize=12, color=INK_2, va="center")
+                  fontsize=12, color=INK_2, va="center", ha="center")
 
     t = [r["t"] for r in rows]
     avg = [r["avg"] if r["avg"] is not None else r["raw"] for r in rows]
-    sig.grid(axis="y", color=GRID, lw=1)
-    sig.set_axisbelow(True)
     if rows:
-        lo, hi = min(avg) - 5, max(avg) + 5
-        sig.plot(t, avg, color=INK_2, lw=2.2, solid_capstyle="round", zorder=3)
-        sig.plot(t[-1:], avg[-1:], "o", ms=8, color=INK, mec=SURFACE, mew=2, zorder=4)
+        lo, hi = min(avg) - 5, max(avg) + 6
+        sig.fill_between(t, lo, avg, color=SIGNAL, alpha=0.07, lw=0)
+        sig.plot(t, avg, color=INK_2, lw=3, solid_capstyle="round", solid_joinstyle="round")
+        sig.plot(t[-1:], avg[-1:], "o", ms=10, color=INK, mec=DEMO_BG, mew=3, zorder=4)
         sig.set_ylim(lo, hi)
         for r in rows:
             if r["alert"]:
-                sig.axvline(r["t"], color=SIGNAL, lw=1.5, zorder=2)
-                sig.text(r["t"] + 0.25, hi, "buzz", color=INK, fontsize=11, va="top")
-    sig.set_yticklabels([])
+                sig.axvline(r["t"], color=SIGNAL, lw=2, alpha=0.8)
+                sig.text(r["t"] + 0.3, hi - 0.5, "bzz!", color=INK, fontsize=13, va="top", fontweight="demibold")
     sig.set_xticks([])
-    sig.text(0.0, 1.0, "Bluetooth signal  ·  higher is stronger", transform=sig.transAxes, fontsize=11,
-             color=INK_2, va="bottom")
+    sig.set_yticks([])
+    sig.set_xlim(left, right)
+    sig.set_title("bluetooth signal  (higher = stronger)", loc="left", fontsize=12, color=INK_2, pad=6)
 
-    for y, color, runs in ((1, SIGNAL, _runs(rows, lambda r: r["score"] is not None and r["score"] >= level)),
-                           (0, RULE_C, _runs(rows, lambda r: r["streak"] >= 3.0))):
-        tracks.plot([left, right], [y, y], color=GRID, lw=6, solid_capstyle="round", zorder=1)
-        for start, width in runs:
-            tracks.plot([start, start + width], [y, y], color=color, lw=6, solid_capstyle="round", zorder=2)
+    tracks.set_xlim(left, right)
+    tracks.set_ylim(-0.7, 1.7)
+    for y, color, on in ((1, SIGNAL, lambda r: r["score"] is not None and r["score"] >= level),
+                         (0, RULE_C, lambda r: r["streak"] >= 3.0)):
+        tracks.plot([left + 0.3, right - 0.3], [y, y], color=DEMO_TRACK, lw=10, solid_capstyle="round")
+        for start, end in _runs(rows, on):   # keep the rounded ends inside the panel
+            tracks.plot([max(start, left + 0.3), min(end, right - 0.3)], [y, y], color=color, lw=10,
+                        solid_capstyle="round")
     for r in rows:
         if r["alert"]:
-            tracks.plot([r["t"]], [1], "o", ms=12, color=SIGNAL, mec=SURFACE, mew=2.5, zorder=3)
-    tracks.set_ylim(-0.6, 1.6)
+            tracks.plot([r["t"]], [1], "o", ms=15, color=SIGNAL, mec=DEMO_BG, mew=3, zorder=3)
     tracks.set_yticks([1, 0])
-    tracks.set_yticklabels(["Side Eye", "Strength rule"], color=INK, fontsize=12)
+    tracks.set_yticklabels(["side eye", "old rule"], color=INK, fontsize=13)
     tracks.set_xticks([])
-    tracks.set_xlabel(f"last {window_s:g} seconds  ·  bar = thinks someone is lingering  ·  dot = buzz",
+    tracks.set_xlabel(f"last {window_s:g} s   ·   bar = thinks someone's lingering   ·   dot = buzz",
                       color=INK_2, fontsize=11)
-    for ax in (sig, tracks):
-        ax.set_xlim(left, right)
 
 
 def main():
@@ -347,22 +381,28 @@ def main():
 
     plt.rcParams.update({"font.family": "sans-serif", "font.size": 10})
     if args.demo:
-        plt.rcParams.update({"font.family": ["Helvetica Neue", "Helvetica", "Arial", "sans-serif"]})
-        fig, axes = plt.subplots(3, 1, figsize=(12.5, 7), gridspec_kw={"height_ratios": [1.15, 3, 0.85]})
+        plt.rcParams.update({"font.family": ["Avenir Next", "Avenir", "Helvetica Neue", "sans-serif"]})
+        fig = plt.figure(figsize=(11, 6.2), layout="constrained", facecolor=DEMO_BG)
+        mosaic = fig.subplot_mosaic([["eye", "head"], ["sig", "sig"], ["tracks", "tracks"]],
+                                    width_ratios=[1, 7], height_ratios=[1.1, 3, 0.95])
+        axes = tuple(mosaic[k] for k in ("eye", "head", "sig", "tracks"))
     else:
         fig, axes = plt.subplots(2, 1, figsize=(11, 6.5), sharex=True, gridspec_kw={"height_ratios": [3, 2]})
-    fig.patch.set_facecolor(SURFACE)
+    if not args.demo:
+        fig.patch.set_facecolor(SURFACE)
     if args.snapshot:
         time.sleep(args.duration)
         painter(fig, axes, feed, args.window, title)
-        fig.tight_layout()
-        fig.savefig(args.snapshot, dpi=150, facecolor=SURFACE)
+        if not args.demo:
+            fig.tight_layout()
+        fig.savefig(args.snapshot, dpi=150, facecolor=fig.get_facecolor())
         rows = feed.snapshot()[0]
         print(f"Saved {args.snapshot}: {len(rows)} rows in view, {sum(r['alert'] for r in rows)} BUZZ, "
               f"{sum(r['rule'] for r in rows)} rule-would-buzz", flush=True)
         os._exit(0)
     _anim = FuncAnimation(fig, lambda _: painter(fig, axes, feed, args.window, title), interval=500, cache_frame_data=False)
-    fig.tight_layout()
+    if not args.demo:   # the demo figure uses constrained layout, which refits on every redraw and resize
+        fig.tight_layout()
     plt.show()
 
 
