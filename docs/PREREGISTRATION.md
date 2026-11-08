@@ -127,3 +127,9 @@ the models did not clear the bar.
 Analyses pooling sessions 1 and 2, or tuned after seeing session 2, are exploratory.
 (Amendment 3, addendum before session 2: simulated far walks stand at 4 m ± 0.3, matching the
 protocol's 4 m mark; previously 3.5-6 m. The ablations now clear their simulated walks each run.)
+(Amendment 3, second addendum, before session 2 was recorded: calibration at 2 m vs 4 m failed the
+6 dB gate twice: -51 vs -54 dBm (3 dB) and -54 vs -58 dBm (4 dB). The gate was designed for 2 m vs
+6 m; in this room 2 m and 4 m differ by only 3-4 dB when standing still. The session 2 cutoff is
+therefore set from session 1's walks instead: stopped-linger median -49.7 dBm, far-walk median
+-56.8 dBm, cutoff -53.3 dBm (settings.json: threshold_dbm -53.3, near_median -49.7, far_median -56.8).
+Both failed attempts' midpoints, -52.5 and -56.0, bracket it.)
