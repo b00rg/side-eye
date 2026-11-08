@@ -4,6 +4,7 @@ Usage (from the repo root):
   python3 scripts/live_graph.py --ssh canary@canary.local          # the Pi's running canary.service
   python3 scripts/fake_live.py --stream | python3 scripts/live_graph.py --stdin   # rehearse, no Pi
   python3 scripts/live_graph.py --replay data/runs_session2/<walk>.csv ...  # recorded walks through Model 3
+  add --demo for the audience view (one signal line; when Side Eye vs the old strength rule think someone lingers)
   add --snapshot out.png [--duration 90] to save a still image instead of opening a window
 
 Top panel: signal strength (raw readings as dots, smoothed average as a line) against the near/far
@@ -31,6 +32,7 @@ THRESH = re.compile(r"threshold (-?[\d.]+) dBm")
 ALERT_AT = re.compile(r"score >= ([\d.]+) twice")   # shape_live.py's start-up line, e.g. --alert 0.7
 SURFACE, INK, INK_2, MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#b5b4ae", "#e8e7e3"
 SIGNAL, SCORE = "#2a78d6", "#eb6834"   # reference palette slots 1 and 2
+RULE_C = "#1baf7a"                      # the 3-second rule, as in docs/figures (demo view)
 RULE_COOLDOWN_S = 15
 
 
@@ -202,6 +204,134 @@ def draw(fig, axes, feed, window_s, title):
     fig.suptitle(f"{title}    {state}", x=0.08, y=0.995, ha="left", fontsize=14, fontweight="bold", color=INK)
 
 
+def _runs(rows, on):
+    """Contiguous stretches where on(row) is true -> [(start, width)], one second per row."""
+    out, start, prev = [], None, None
+    for r in rows:
+        if on(r) and start is None:
+            start = r["t"]
+        elif not on(r) and start is not None:
+            out.append((start, prev - start + 1))
+            start = None
+        prev = r["t"]
+    if start is not None:
+        out.append((start, prev - start + 1))
+    return out
+
+
+DEMO_BG, DEMO_TRACK = "#fbf9f6", "#ece8e2"   # soft paper background, empty timeline track
+
+
+def _runs(rows, on):
+    """Contiguous stretches where on(row) is true -> [(start, width)], one second per row."""
+    out, start, prev = [], None, None
+    for r in rows:
+        if on(r) and start is None:
+            start = r["t"]
+        elif not on(r) and start is not None:
+            out.append((start, prev - start + 1))
+            start = None
+        prev = r["t"]
+    if start is not None:
+        out.append((start, prev - start + 1))
+    return out
+
+
+DEMO_BG, DEMO_TRACK = "#fbf9f6", "#ece8e2"   # soft paper background, empty timeline track
+
+
+def _runs(rows, on):
+    """Contiguous stretches where on(row) is true -> [(start, end)], one second per row."""
+    out, start, prev = [], None, None
+    for r in rows:
+        if on(r) and start is None:
+            start = r["t"]
+        elif not on(r) and start is not None:
+            out.append((start, prev + 1))
+            start = None
+        prev = r["t"]
+    if start is not None:
+        out.append((start, prev + 1))
+    return out
+
+
+def draw_demo(fig, axes, feed, window_s, title):
+    """Audience view: Side Eye's verdict, one signal line, and when each method thinks someone is
+    lingering (blue = Side Eye's shape model, green = the old 3-second strength rule)."""
+    head, sig, tracks = axes
+    rows, notes, _ = feed.snapshot()
+    for ax in (head, sig, tracks):
+        ax.clear()
+        ax.set_facecolor(DEMO_BG)
+        for side in ax.spines.values():
+            side.set_visible(False)
+        ax.tick_params(colors=INK_2, length=0, labelsize=12)
+    head.axis("off")
+    now = rows[-1]["t"] if rows else 0.0
+    left, right = max(0.0, now - window_s), max(window_s, now) + 1
+    level, last = feed.alert_level, (rows[-1] if rows else None)
+    score = last["score"] if last else None
+    buzzed = any(r["alert"] for r in rows if r["t"] >= now - 4)
+    if last is None or score is None:
+        verdict, active = "Waiting for signal", False
+    elif buzzed or score >= level:
+        verdict, active = "Lingering", True
+    elif score >= 0.3:
+        verdict, active = "Approaching", False
+    else:
+        verdict, active = "Passing by", False
+
+    head.set_xlim(0, 1)
+    head.set_ylim(0, 1)
+    head.text(0.0, 0.92, "SIDE EYE", fontsize=11, color=INK_2, va="top", fontweight="demibold")
+    head.text(0.0, 0.55, verdict, fontsize=28, color=SIGNAL if active else INK, va="center", fontweight="demibold")
+    sub = (f"confidence {score:.0%}" + ("  ·  buzzed" if buzzed else "")) if score is not None else ""
+    head.text(0.0, 0.2, sub, fontsize=13, color=INK_2, va="center")
+    rule_on = bool(last and last["streak"] >= 3.0)
+    head.text(1.0, 0.92, "OLD STRENGTH RULE", fontsize=11, color=INK_2, va="top", ha="right", fontweight="demibold")
+    head.text(1.0, 0.55, "Would buzz" if rule_on else "Quiet", fontsize=20, color=INK, va="center", ha="right")
+    recent = [n for n in notes if n[0] >= now - 8 and ("TP" in n[1] or "FP" in n[1] or n[1].startswith("Reported"))]
+    if recent:
+        text = recent[-1][1]
+        head.text(0.55, 0.2, "labelled: glasses there" if "TP" in text else
+                  "labelled: false alarm" if "FP" in text else "reported: missed glasses",
+                  fontsize=12, color=INK_2, va="center", ha="center")
+
+    t = [r["t"] for r in rows]
+    avg = [r["avg"] if r["avg"] is not None else r["raw"] for r in rows]
+    if rows:
+        lo, hi = min(avg) - 5, max(avg) + 6
+        sig.fill_between(t, lo, avg, color=SIGNAL, alpha=0.07, lw=0)
+        sig.plot(t, avg, color=INK_2, lw=3, solid_capstyle="round", solid_joinstyle="round")
+        sig.plot(t[-1:], avg[-1:], "o", ms=10, color=INK, mec=DEMO_BG, mew=3, zorder=4)
+        sig.set_ylim(lo, hi)
+        for r in rows:
+            if r["alert"]:
+                sig.axvline(r["t"], color=SIGNAL, lw=2, alpha=0.8)
+                sig.text(r["t"] + 0.3, hi - 0.5, "buzz", color=INK, fontsize=12, va="top")
+    sig.set_xticks([])
+    sig.set_yticks([])
+    sig.set_xlim(left, right)
+    sig.set_title("Bluetooth signal  ·  higher is stronger", loc="left", fontsize=12, color=INK_2, pad=6)
+
+    tracks.set_xlim(left, right)
+    tracks.set_ylim(-0.7, 1.7)
+    for y, color, on in ((1, SIGNAL, lambda r: r["score"] is not None and r["score"] >= level),
+                         (0, RULE_C, lambda r: r["streak"] >= 3.0)):
+        tracks.plot([left + 0.3, right - 0.3], [y, y], color=DEMO_TRACK, lw=10, solid_capstyle="round")
+        for start, end in _runs(rows, on):   # keep the rounded ends inside the panel
+            tracks.plot([max(start, left + 0.3), min(end, right - 0.3)], [y, y], color=color, lw=10,
+                        solid_capstyle="round")
+    for r in rows:
+        if r["alert"]:
+            tracks.plot([r["t"]], [1], "o", ms=15, color=SIGNAL, mec=DEMO_BG, mew=3, zorder=3)
+    tracks.set_yticks([1, 0])
+    tracks.set_yticklabels(["Side Eye", "Old rule"], color=INK, fontsize=13)
+    tracks.set_xticks([])
+    tracks.set_xlabel(f"Last {window_s:g} s   ·   bar = thinks someone is lingering   ·   dot = buzz",
+                      color=INK_2, fontsize=11)
+
+
 def main():
     ap = argparse.ArgumentParser()
     src = ap.add_mutually_exclusive_group(required=True)
@@ -211,6 +341,8 @@ def main():
     ap.add_argument("--window", type=float, default=60, help="seconds shown")
     ap.add_argument("--speed", type=float, default=1.0,
                     help="replay speed; with --stdin, match fake_live.py --speed to keep real seconds")
+    ap.add_argument("--demo", action="store_true",
+                    help="audience view: plain-English status, one signal line, score vs the buzz line (30 s window)")
     ap.add_argument("--snapshot", help="save a still PNG after --duration seconds instead of a live window")
     ap.add_argument("--duration", type=float, default=60)
     args = ap.parse_args()
@@ -221,7 +353,10 @@ def main():
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
 
+    if args.demo and args.window == 60:
+        args.window = 30
     feed = Feed(args.window)
+    painter = draw_demo if args.demo else draw
     if args.ssh:
         proc = subprocess.Popen(["ssh", args.ssh, "journalctl -u canary.service -f -n 20 -o cat"],
                                 stdout=subprocess.PIPE, text=True)
@@ -233,19 +368,27 @@ def main():
     threading.Thread(target=read_stream, args=(source, feed, args.speed if args.stdin else 1.0), daemon=True).start()
 
     plt.rcParams.update({"font.family": "sans-serif", "font.size": 10})
-    fig, axes = plt.subplots(2, 1, figsize=(11, 6.5), sharex=True, gridspec_kw={"height_ratios": [3, 2]})
-    fig.patch.set_facecolor(SURFACE)
+    if args.demo:
+        plt.rcParams.update({"font.family": ["Avenir Next", "Avenir", "Helvetica Neue", "sans-serif"]})
+        fig = plt.figure(figsize=(11, 6.2), layout="constrained", facecolor=DEMO_BG)
+        axes = tuple(fig.subplots(3, 1, gridspec_kw={"height_ratios": [1.0, 3, 0.95]}))
+    else:
+        fig, axes = plt.subplots(2, 1, figsize=(11, 6.5), sharex=True, gridspec_kw={"height_ratios": [3, 2]})
+    if not args.demo:
+        fig.patch.set_facecolor(SURFACE)
     if args.snapshot:
         time.sleep(args.duration)
-        draw(fig, axes, feed, args.window, title)
-        fig.tight_layout()
-        fig.savefig(args.snapshot, dpi=150, facecolor=SURFACE)
+        painter(fig, axes, feed, args.window, title)
+        if not args.demo:
+            fig.tight_layout()
+        fig.savefig(args.snapshot, dpi=150, facecolor=fig.get_facecolor())
         rows = feed.snapshot()[0]
         print(f"Saved {args.snapshot}: {len(rows)} rows in view, {sum(r['alert'] for r in rows)} BUZZ, "
               f"{sum(r['rule'] for r in rows)} rule-would-buzz", flush=True)
         os._exit(0)
-    _anim = FuncAnimation(fig, lambda _: draw(fig, axes, feed, args.window, title), interval=500, cache_frame_data=False)
-    fig.tight_layout()
+    _anim = FuncAnimation(fig, lambda _: painter(fig, axes, feed, args.window, title), interval=500, cache_frame_data=False)
+    if not args.demo:   # the demo figure uses constrained layout, which refits on every redraw and resize
+        fig.tight_layout()
     plt.show()
 
 
