@@ -1,8 +1,9 @@
 # Side Eye live detector. Assumes the repo is cloned to /home/canary/side-eye
-# and `python3 pi/canary.py calibrate` has written /home/canary/side-eye/settings.json.
+# and `python3 pi/canary.py calibrate` has written /home/canary/side-eye/settings.json,
+# and train_shape.py (or gcp/fetch_model.sh) has put shape_model.joblib there.
 # Install:  sudo cp pi/canary.service /etc/systemd/system/ && sudo systemctl enable --now canary
 [Unit]
-Description=Side Eye smart-glasses detector (Model 3 drives the motor; falls back to the 3-second rule until model.joblib exists)
+Description=Side Eye smart-glasses detector (shape model drives the motor; buzzes and button labels go to Tiger Data)
 After=bluetooth.service
 Wants=bluetooth.service
 
@@ -10,7 +11,10 @@ Wants=bluetooth.service
 Type=simple
 User=canary
 WorkingDirectory=/home/canary/side-eye
-ExecStart=/usr/bin/python3 /home/canary/side-eye/pi/canary.py live --use-model
+# Tiger Data credentials for alarm upload (optional: '-' means start anyway if missing).
+EnvironmentFile=-/home/canary/side-eye/.env
+# The shape model (docs/RESULTS.md). For the 3-second rule instead: pi/canary.py live
+ExecStart=/usr/bin/python3 /home/canary/side-eye/pi/shape_live.py
 Restart=on-failure
 RestartSec=3
 

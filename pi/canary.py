@@ -15,8 +15,7 @@ from canary_core import MODEL_COLUMNS, ModelAlert, Tracker, project_root, signat
 ROOT = project_root(__file__)  # repo root in the repo; this folder when deployed flat on the Pi
 SETTINGS = ROOT / "settings.json"
 RUNS = ROOT / "data" / "runs"
-BUTTON_PIN = 17        # feedback button: physical pin 11 (GPIO17) to pin 9 (GND)
-RETRAIN_EVERY = 20     # retrain after this many new feedback rows
+BUTTON_PIN = 17        # wire button: physical pin 11 (GPIO17) to pin 9 (GND), see WireButton
 
 
 def threshold():
@@ -202,6 +201,18 @@ class Motor:
         finally:
             self.pin.off()
 
+    async def tick(self, count):
+        """Short confirmation ticks (60 ms), clearly different from the 250 ms alarm."""
+        try:
+            for i in range(count):
+                self.pin.on()
+                await asyncio.sleep(0.06)
+                self.pin.off()
+                if i < count - 1:
+                    await asyncio.sleep(0.15)
+        finally:
+            self.pin.off()
+
     def close(self):
         self.pin.off()
         self.pin.close()
@@ -231,110 +242,161 @@ class ModelFile:
             return False
         import joblib
 
-        self.model = joblib.load(self.path)  # Load only the file created by this team's train_model.py.
+        self.model = joblib.load(self.path)  # Load only files created by this team's own training scripts.
         self.mtime = mtime
         return True
 
 
-def start_presses(use_button):
-    """Feedback presses arrive on a queue: from the GPIO17 button, and from typing y + Enter."""
-    import queue
-    import sys
-    import threading
+class WireButton:
+    """Two jumper wires: one on GPIO17 (pin 11), one on GND (pin 9). Touch the ends = press.
 
-    presses = queue.SimpleQueue()
-    button = None
-    if use_button:
+    The Pi's internal pull-up holds GPIO17 high; touching it to ground pulls it low.
+    Never touch the GPIO wire to a 3.3 V or 5 V pin.
+    """
+
+    def __init__(self, pin=BUTTON_PIN):
+        from collections import deque
+        from gpiozero import Button
+
+        self.button = Button(pin, pull_up=True, bounce_time=0.05)
+        self.durations = deque()
+        self._down_at = None
+        self.button.when_pressed = self._pressed
+        self.button.when_released = self._released
+
+    def _pressed(self):
+        self._down_at = time.monotonic()
+
+    def _released(self):
+        if self._down_at is not None:
+            self.durations.append(time.monotonic() - self._down_at)
+            self._down_at = None
+
+    def presses(self):
+        while self.durations:
+            yield self.durations.popleft()
+
+    def close(self):
+        self.button.close()
+
+
+async def button_test(seconds):
+    from canary_core import HOLD_S
+
+    button = WireButton()
+    print(f"Touch the GPIO17 and GND wire ends together for {seconds} s. Hold >= {HOLD_S} s counts as a hold.")
+    end = time.monotonic() + seconds
+    try:
+        while time.monotonic() < end:
+            await asyncio.sleep(0.2)
+            for duration in button.presses():
+                print(f"{'HOLD' if duration >= HOLD_S else 'tap '}  {duration:.2f} s", flush=True)
+    finally:
+        button.close()
+
+
+def open_store_and_button(with_db, with_button):
+    """Tiger Data upload (if credentials are set up) and the GPIO17 wire button (only useful with uploads)."""
+    store = glasses_ref = button = None
+    if with_db:
+        from alarm_store import AlarmStore, GlassesRef
+
+        store = AlarmStore.from_env()
+        glasses_ref = GlassesRef()
+    if store and with_button:
         try:
-            from gpiozero import Button
-
-            button = Button(BUTTON_PIN, pull_up=True, bounce_time=0.1)   # button between GPIO17 and GND
-            button.when_pressed = lambda: presses.put("button")
-        except Exception as error:   # no GPIO here (laptop) or pin busy: keyboard still works
-            print(f"Feedback button unavailable ({error}); type y + Enter instead.")
-
-    def keyboard():
-        for line in sys.stdin:
-            if line.strip().lower() == "y":
-                presses.put("keyboard")
-
-    threading.Thread(target=keyboard, daemon=True).start()
-    return presses, button
+            button = WireButton()
+            print("Wire button on GPIO17: touch after a buzz = glasses there, hold 2 s = false alarm, "
+                  "touch any other time = missed glasses.")
+        except Exception as error:  # no gpiozero / not a Pi
+            print(f"Wire button off ({type(error).__name__}).")
+    return store, glasses_ref, button
 
 
-def retrain_in_background(feedback_path):
-    """Retrain with the latest feedback; live() picks up the new model.joblib when it lands."""
-    import subprocess
-    import sys
+async def handle_presses(button, store, last_buzz, now, report_missed, motor=None):
+    """Turn wire-button presses into Tiger labels; returns the updated last_buzz.
 
-    args = [sys.executable, str(Path(__file__).resolve().parent / "train_model.py"), "--feedback", str(feedback_path)]
-    sim_rows = next((p for p in (ROOT / "sim_rows.csv", ROOT / "data" / "sim_rows.csv") if p.exists()), None)
-    if sim_rows:   # flat on the Pi it's next to the scripts; in the repo it's data/sim_rows.csv
-        args += ["--sim-rows", str(sim_rows)]
-    log = open(ROOT / "retrain.log", "a")
-    return subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
+    last_buzz is (uploaded row, monotonic time) for the latest buzz, or None. report_missed() records a
+    missed-glasses row and returns True if signal features were attached.
+    """
+    from canary_core import classify_press
+
+    for duration in button.presses():
+        since = now - last_buzz[1] if last_buzz else None
+        kind = classify_press(duration, since)
+        if kind in ("tp", "fp"):
+            store.label(last_buzz[0], kind == "tp")
+            last_buzz = None
+            print("Labelled last buzz: " + ("TP, glasses were there" if kind == "tp" else "FP, false alarm"), flush=True)
+        else:
+            with_features = report_missed()
+            print("Reported missed glasses (FN)" + (" with signal features" if with_features else ""), flush=True)
+        if motor:
+            await motor.tick({"tp": 1, "fp": 2, "fn": 3}[kind])
+    return last_buzz
 
 
-async def live(with_motor, use_model=False, feedback_on=True, retrain_every=RETRAIN_EVERY):
-    from feedback import Feedback, FeedbackStore
-
+async def live(with_motor, with_db=True, with_button=True, use_model=False):
     limit = threshold()
     session = Session()
     motor = Motor() if with_motor else None
+    store, glasses_ref, button = open_store_and_button(with_db, with_button)
+    if store:
+        from alarm_store import make_alarm, make_missed
     last_alert = {}
-    model_file = ModelFile(ROOT / "model.joblib")
+    last_buzz = None  # (row uploaded for the latest buzz, monotonic time), cleared once labelled
+    model_file = ModelFile(ROOT / "model.joblib")   # reloaded when retraining replaces it
+    model_alerts = {}
     if use_model and model_file.model is None:
         print("No model.joblib yet: the motor follows the 3-second rule until a model is trained.")
-    model_alerts = {}
-    feedback = Feedback(FeedbackStore(ROOT / "feedback.db")) if feedback_on else None
-    presses, button = start_presses(with_motor) if feedback_on else (None, None)
-    rows_since_train, retrain = 0, None
-    driver = "the model (score >= 0.8 twice within 2.5 s)" if use_model else "the 3-second rule; ML score is display-only"
-    print(f"Side Eye live: simulator packet only; threshold {limit} dBm; motor follows {driver}.")
-    if feedback:
-        print(f"Feedback on: press the button (GPIO{BUTTON_PIN}) or type y + Enter when someone is lingering. "
-              f"{feedback.store.count()} feedback rows so far.")
+
+    def score(snap):
+        model = model_file.model
+        return float(model.predict_proba([snap.model_vector()])[0][1]) if model is not None else None
+
+    driver = "the level model (score >= 0.8 twice within 2.5 s)" if use_model else \
+        "the 3-second rule; ML score is display-only"
+    print(f"Canary live: simulator packet only; threshold {limit} dBm; motor follows {driver}.")
     try:
         async with new_scanner(session.callback):
             while True:
                 await asyncio.sleep(1)
                 now = time.monotonic()
-                if model_file.refresh() and model_file.mtime:
+                if model_file.refresh():
                     print("Model updated: now using the newly trained model.joblib.", flush=True)
-                model = model_file.model
                 active = list(session.snapshots(now, limit))
-                if feedback:
-                    while not presses.empty():
-                        source = presses.get()
-                        added = feedback.press(now)
-                        rows_since_train += added
-                        print(f"Feedback ({source}): {added} rows saved as 'lingering'.", flush=True)
-                    rows_since_train += feedback.tick(now)
-                    if rows_since_train >= retrain_every and (retrain is None or retrain.poll() is not None):
-                        print(f"{rows_since_train} new feedback rows: retraining in the background.", flush=True)
-                        retrain, rows_since_train = retrain_in_background(ROOT / "feedback.db"), 0
+                if button:
+                    def report_missed():
+                        # Attach the strongest device the Pi is tracking right now, if any, so the miss is trainable.
+                        address, snap = max(active, key=lambda item: item[1].mean_rssi, default=(None, None))
+                        store.record(make_missed(
+                            glasses_ref, address, session.signatures.get(address) if address else None,
+                            snap, score(snap) if snap else None))
+                        return snap is not None
+
+                    last_buzz = await handle_presses(button, store, last_buzz, now, report_missed, motor)
                 if not active:
                     print("Waiting for simulator packet...", flush=True)
                     continue
                 for address, snap in active:
-                    probability = None
-                    if model is not None:
-                        probability = float(model.predict_proba([snap.model_vector()])[0][1])
-                    if feedback:
-                        feedback.observe(now, address, snap.model_vector())
-                    if use_model and model is not None:
+                    probability = score(snap)
+                    if use_model and probability is not None:
                         eligible = model_alerts.setdefault(address, ModelAlert()).update(now, probability)
                     else:
                         eligible = snap.close_streak_s >= 3.0
                     fire = eligible and now - last_alert.get(address, -1e9) >= 15
                     if fire:
                         last_alert[address] = now
-                        if feedback:
-                            feedback.alert(now, address)
-                    score = f"{probability:.2f}" if probability is not None else "untrained"
+                        if store:
+                            # Only buzzes are uploaded; the address is hashed inside make_alarm.
+                            alarm = make_alarm(address, session.signatures.get(address), snap, probability, glasses_ref,
+                                               rule="level-model" if use_model and probability is not None else "3s-streak")
+                            store.record(alarm)
+                            last_buzz = (alarm, now)
+                    shown = f"{probability:.2f}" if probability is not None else "untrained"
                     print(
                         f"RSSI {snap.latest_rssi:4d} dBm | avg {snap.mean_rssi:6.1f} dBm | near streak {snap.close_streak_s:4.1f} s "
-                        f"| ML linger score {score} | {'ALERT' if fire else 'watching'}",
+                        f"| ML linger score {shown} | {'ALERT' if fire else 'watching'}",
                         flush=True,
                     )
                     if fire and motor:
@@ -344,6 +406,8 @@ async def live(with_motor, use_model=False, feedback_on=True, retrain_every=RETR
             motor.close()
         if button:
             button.close()
+        if store:
+            store.close()
 
 
 def main():
@@ -361,9 +425,12 @@ def main():
     live_parser = commands.add_parser("live", help="run the haptic demo")
     live_parser.add_argument("--no-motor", action="store_true", help="terminal-only software check")
     live_parser.add_argument("--use-model", action="store_true",
-                             help="motor follows the trained model (model.joblib) instead of the 3-second rule")
-    live_parser.add_argument("--no-feedback", action="store_true",
-                             help="don't record feedback presses or retrain")
+                             help="motor follows the level model (model.joblib) instead of the 3-second rule "
+                                  "(the shape model runs in shape_live.py)")
+    live_parser.add_argument("--no-db", action="store_true", help="don't upload alarms to Tiger Data")
+    live_parser.add_argument("--no-button", action="store_true", help="ignore the wire button on GPIO17")
+    button_parser = commands.add_parser("button-test", help="print taps/holds from the GPIO17 wire button")
+    button_parser.add_argument("--seconds", type=int, default=30)
     args = parser.parse_args()
     global SCANNER
     if args.hci:
@@ -377,7 +444,9 @@ def main():
     elif args.command == "motor-test":
         asyncio.run(motor_test())
     elif args.command == "live":
-        asyncio.run(live(not args.no_motor, args.use_model, not args.no_feedback))
+        asyncio.run(live(not args.no_motor, not args.no_db, not args.no_button, args.use_model))
+    elif args.command == "button-test":
+        asyncio.run(button_test(args.seconds))
 
 
 if __name__ == "__main__":

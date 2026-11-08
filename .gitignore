@@ -30,3 +30,19 @@ det_curve.csv
 results/
 model.joblib
 data/sim_rows.csv
+
+# Secrets (Tiger Data credentials)
+.env
+.env.*
+data/alarm_buffer.jsonl
+*.env
+tiger-cloud-*
+
+# Retrained models (pi/retrain.py)
+models/
+model.json
+model.joblib.prev
+model.joblib.tmp
+
+# Google Cloud service-account keys (gcp/README.md)
+*-key.json
