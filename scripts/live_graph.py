@@ -7,7 +7,8 @@ Usage (from the repo root):
   add --snapshot out.png [--duration 90] to save a still image instead of opening a window
 
 Top panel: signal strength (raw readings as dots, smoothed average as a line) against the near/far
-cutoff. Bottom panel: Model 3's linger score against its 0.8 alert line. A solid BUZZ line marks
+cutoff. Bottom panel: the model's linger score against its alert line (Model 3 at 0.8, or the shape
+model at shape_live's --alert, read from its start-up line). A solid BUZZ line marks
 each motor alert; a dotted "rule" line marks where the old 3-second rule would have buzzed.
 
 Reads the Pi's own `live` output lines, so nothing new runs on the Pi and nothing leaves the
@@ -27,6 +28,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LINE = re.compile(r"RSSI\s+(-?\d+) dBm \| (?:avg\s+(-?[\d.]+) dBm \| )?near streak\s+([\d.]+) s \| "
                   r"ML linger score (\S+) \| (ALERT|watching)")
 THRESH = re.compile(r"threshold (-?[\d.]+) dBm")
+ALERT_AT = re.compile(r"score >= ([\d.]+) twice")   # shape_live.py's start-up line, e.g. --alert 0.7
 SURFACE, INK, INK_2, MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#b5b4ae", "#e8e7e3"
 SIGNAL, SCORE = "#2a78d6", "#eb6834"   # reference palette slots 1 and 2
 RULE_COOLDOWN_S = 15
@@ -39,10 +41,13 @@ def parse(line):
         raw, avg, streak, score, state = m.groups()
         return "row", dict(raw=int(raw), avg=float(avg) if avg else None, streak=float(streak),
                            score=None if score == "untrained" else float(score), alert=state == "ALERT")
+    if "shape model" in line:
+        m, c = ALERT_AT.search(line), THRESH.search(line)
+        return "model", ("Shape model", float(m.group(1)) if m else 0.8, float(c.group(1)) if c else None)
     m = THRESH.search(line)
     if m:
         return "cutoff", float(m.group(1))
-    if "Model updated" in line or line.startswith("Feedback ("):
+    if "Model updated" in line or line.startswith(("Feedback (", "Labelled last buzz", "Reported missed")):
         return "note", line.strip()
     return None
 
@@ -54,6 +59,7 @@ class Feed:
         self.rows, self.notes = deque(), deque()
         self.window_s, self.cutoff, self.t0 = window_s, None, None
         self.last_rule, self.lock = -1e9, threading.Lock()
+        self.model_name, self.alert_level = "Model 3", 0.8   # replaced by shape_live's start-up line
 
     def add(self, line, now=None):
         parsed = parse(line)
@@ -65,6 +71,11 @@ class Feed:
         t = now - self.t0
         kind, value = parsed
         with self.lock:
+            if kind == "model":
+                self.model_name, self.alert_level, cutoff = value
+                if cutoff is not None:
+                    self.cutoff = cutoff
+                return
             if kind == "cutoff":
                 self.cutoff = value
             elif kind == "note":
@@ -151,18 +162,21 @@ def draw(fig, axes, feed, window_s, title):
     t = [r["t"] for r in rows]
 
     if cutoff is not None:
-        top.axhspan(cutoff, -20, color=SIGNAL, alpha=0.06, lw=0)
-        top.axhline(cutoff, color=INK_2, lw=1.5, ls=(0, (5, 4)), label=f"near / far cutoff ({cutoff:.0f} dBm)")
+        top.axhspan(cutoff, 0, color=SIGNAL, alpha=0.06, lw=0)
+        label = (f"3-s rule cutoff ({cutoff:.0f} dBm)" if feed.model_name == "Shape model"
+                 else f"near / far cutoff ({cutoff:.0f} dBm)")
+        top.axhline(cutoff, color=INK_2, lw=1.5, ls=(0, (5, 4)), label=label)
     top.scatter(t, [r["raw"] for r in rows], s=10, color=MUTED, zorder=2, label="each reading")
     if any(r["avg"] is not None for r in rows):
         top.plot(*broken([r["avg"] for r in rows]), color=SIGNAL, lw=2, zorder=3, label="smoothed signal")
-    top.set_ylim(-95, -25)
+    top.set_ylim(-95, -2)   # close-up readings reach about -5 dBm
     top.set_ylabel("signal (dBm)", color=INK_2)
     top.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=3, frameon=False, fontsize=9, labelcolor=INK)
 
     if any(r["score"] is not None for r in rows):
-        bottom.plot(*broken([r["score"] for r in rows]), color=SCORE, lw=2, label="Model 3 linger score")
-    bottom.axhline(0.8, color=INK_2, lw=1.5, ls=(0, (5, 4)), label="alert level (0.8)")
+        bottom.plot(*broken([r["score"] for r in rows]), color=SCORE, lw=2, label=f"{feed.model_name} linger score")
+    bottom.axhline(feed.alert_level, color=INK_2, lw=1.5, ls=(0, (5, 4)),
+                   label=f"alert level ({feed.alert_level:g})")
     bottom.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=2, frameon=False, fontsize=9, labelcolor=INK)
     bottom.set_ylim(-0.03, 1.08)
     bottom.set_ylabel("linger score", color=INK_2)
@@ -172,14 +186,16 @@ def draw(fig, axes, feed, window_s, title):
         if r["alert"]:
             for ax in axes:
                 ax.axvline(r["t"], color=INK, lw=2.5, zorder=4)
-            top.text(r["t"] + 0.5, -28, "BUZZ", color=INK, fontsize=11, fontweight="bold", va="top")
+            top.text(r["t"] + 0.5, -5, "BUZZ", color=INK, fontsize=11, fontweight="bold", va="top")
         if r["rule"]:
             for ax in axes:
                 ax.axvline(r["t"], color=INK_2, lw=1.2, ls=":", zorder=3)
             top.text(r["t"] + 0.5, -93, "3-s rule would buzz", color=INK_2, fontsize=8, va="bottom")
     for nt, text in notes:
-        bottom.text(nt - 0.6, 1.06, "+feedback" if text.startswith("Feedback") else "model updated",
-                    color=INK_2, fontsize=8, va="top", ha="right")
+        label = ("glasses there" if "TP" in text else "false alarm" if "FP" in text
+                 else "missed glasses" if text.startswith("Reported") else
+                 "+feedback" if text.startswith("Feedback") else "model updated")
+        bottom.text(nt - 0.6, 1.06, label, color=INK_2, fontsize=8, va="top", ha="right")
     for ax in axes:
         ax.set_xlim(left, right)
     state = "BUZZ" if rows and any(r["alert"] for r in rows[-3:]) else ("watching" if rows else "waiting for signal")
