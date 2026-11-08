@@ -4,7 +4,7 @@ Usage (from the repo root):
   python3 scripts/live_graph.py --ssh canary@canary.local          # the Pi's running canary.service
   python3 scripts/fake_live.py --stream | python3 scripts/live_graph.py --stdin   # rehearse, no Pi
   python3 scripts/live_graph.py --replay data/runs_session2/<walk>.csv ...  # recorded walks through Model 3
-  add --demo for the audience view (old strength rule vs Side Eye, side by side, over one signal line)
+  add --demo for the audience view (one signal line; when Side Eye vs the old strength rule think someone lingers)
   add --snapshot out.png [--duration 90] to save a still image instead of opening a window
 
 Top panel: signal strength (raw readings as dots, smoothed average as a line) against the near/far
@@ -32,7 +32,7 @@ THRESH = re.compile(r"threshold (-?[\d.]+) dBm")
 ALERT_AT = re.compile(r"score >= ([\d.]+) twice")   # shape_live.py's start-up line, e.g. --alert 0.7
 SURFACE, INK, INK_2, MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#b5b4ae", "#e8e7e3"
 SIGNAL, SCORE = "#2a78d6", "#eb6834"   # reference palette slots 1 and 2
-RULE_RED = "#d03b3b"                    # the old rule firing (demo view)
+RULE_C = "#1baf7a"                      # the 3-second rule, as in docs/figures (demo view)
 RULE_COOLDOWN_S = 15
 
 
@@ -204,92 +204,110 @@ def draw(fig, axes, feed, window_s, title):
     fig.suptitle(f"{title}    {state}", x=0.08, y=0.995, ha="left", fontsize=14, fontweight="bold", color=INK)
 
 
+def _runs(rows, on):
+    """Contiguous stretches where on(row) is true -> [(start, width)], one second per row."""
+    out, start, prev = [], None, None
+    for r in rows:
+        if on(r) and start is None:
+            start = r["t"]
+        elif not on(r) and start is not None:
+            out.append((start, prev - start + 1))
+            start = None
+        prev = r["t"]
+    if start is not None:
+        out.append((start, prev - start + 1))
+    return out
+
+
 def draw_demo(fig, axes, feed, window_s, title):
-    """Audience view: the old strength rule and Side Eye judging the same signal, side by side.
+    """Audience view: one signal line, and below it when each method thinks someone is lingering.
 
-    Left box: the 3-second strength rule (near streak >= 3 s means it would buzz). Right box: the shape
-    model's verdict and score. Below: one smooth signal line, with Side Eye's buzzes (solid) and the
-    moments the old rule would have buzzed (dotted).
+    Header: Side Eye's verdict (left) and the old 3-second strength rule's (right). Tracks: blue where the
+    shape model is over its alert level (dot = buzz); green where the strength rule's near streak is >= 3 s.
+    Colours match docs/figures (shape model blue, 3-second rule green); all text stays in ink.
     """
-    from matplotlib.patches import FancyBboxPatch
-
     rows, notes, _ = feed.snapshot()
-    banner, top = axes
+    head, sig, tracks = axes
     for ax in axes:
         ax.clear()
         ax.set_facecolor(SURFACE)
         for side in ax.spines.values():
             side.set_visible(False)
         ax.tick_params(colors=INK_2, length=0, labelsize=11)
-    banner.axis("off")
-    banner.set_xlim(0, 1)
-    banner.set_ylim(0, 1)
+    head.axis("off")
     now = rows[-1]["t"] if rows else 0.0
     left, right = max(0.0, now - window_s), max(window_s, now) + 1
     level, last = feed.alert_level, (rows[-1] if rows else None)
-    recent = [r for r in rows if r["t"] >= now - 4]
-
-    # Old way: the 3-second strength rule
-    if last is None:
-        old, old_c = "no signal", INK_2
-    elif last["streak"] >= 3.0:
-        old, old_c = "WOULD BUZZ", RULE_RED
-    else:
-        old, old_c = "quiet", INK_2
-    # Side Eye: the shape model
     score = last["score"] if last else None
-    if any(r["alert"] for r in recent):
-        new, new_c = "BUZZ!", SIGNAL
-    elif last is None or score is None:
-        new, new_c = "no signal", INK_2
+    buzzed = any(r["alert"] for r in rows if r["t"] >= now - 4)
+
+    if last is None or score is None:
+        verdict, active = "Waiting for signal", False
+    elif buzzed:
+        verdict, active = "Someone's lingering", True
     elif score >= level:
-        new, new_c = "they're staying...", SIGNAL
+        verdict, active = "They're staying", True
     elif score >= 0.3:
-        new, new_c = "coming closer...", INK_2
+        verdict, active = "Coming closer", False
     else:
-        new, new_c = "just passing", INK_2
-    for x0, head, verdict, c, sub in (
-            (0.0, "Old way: signal strength", old, old_c, "buzzes after 3 s of strong signal"),
-            (0.52, "Side Eye: signal shape", new, new_c,
-             f"sure someone's staying: {score:.0%}" if score is not None else "")):
-        lit = c != INK_2
-        banner.add_patch(FancyBboxPatch((x0, 0.04), 0.48, 0.9, boxstyle="round,pad=0,rounding_size=0.04",
-                                        fc=c if lit else SURFACE, ec=c if lit else MUTED, lw=2,
-                                        alpha=0.12 if lit else 1, transform=banner.transAxes))
-        banner.add_patch(FancyBboxPatch((x0, 0.04), 0.48, 0.9, boxstyle="round,pad=0,rounding_size=0.04",
-                                        fc="none", ec=c if lit else MUTED, lw=2, transform=banner.transAxes))
-        banner.text(x0 + 0.24, 0.8, head, ha="center", va="center", fontsize=14, color=INK_2,
-                    transform=banner.transAxes)
-        banner.text(x0 + 0.24, 0.47, verdict, ha="center", va="center", fontsize=30, fontweight="bold", color=c,
-                    transform=banner.transAxes)
-        banner.text(x0 + 0.24, 0.16, sub, ha="center", va="center", fontsize=12, color=INK_2,
-                    transform=banner.transAxes)
+        verdict, active = "Just passing", False
+    rule_on = bool(last and last["streak"] >= 3.0)
+
+    def label(x, ha, kicker, text, dot, size):
+        head.text(x, 0.92, kicker, transform=head.transAxes, ha=ha, va="top", fontsize=10, color=INK_2,
+                  fontweight="bold")
+        t = head.text(x, 0.52, text, transform=head.transAxes, ha=ha, va="center", fontsize=size, color=INK)
+        return t
+    label(0.0, "left", "S I D E   E Y E", verdict, active, 26)
+    if active:
+        head.plot([-0.012], [0.52], "o", ms=11, color=SIGNAL, transform=head.transAxes, clip_on=False)
+    if score is not None:
+        head.text(0.0, 0.12, f"confidence {score:.0%}" + ("   ·   buzzed" if buzzed else ""),
+                  transform=head.transAxes, fontsize=12, color=INK_2, va="center")
+    label(1.0, "right", "S T R E N G T H   R U L E", "Would buzz" if rule_on else "Quiet", rule_on, 18)
+    if rule_on:   # dot to the left of the right-aligned verdict, so it never touches the edge
+        head.plot([0.80], [0.52], "o", ms=9, color=RULE_C, transform=head.transAxes, clip_on=False)
+    recent = [n for n in notes if n[0] >= now - 8 and ("TP" in n[1] or "FP" in n[1] or n[1].startswith("Reported"))]
+    if recent:
+        text = recent[-1][1]
+        head.text(1.0, 0.12, "labelled: glasses there" if "TP" in text else
+                  "labelled: false alarm" if "FP" in text else "reported: missed glasses",
+                  transform=head.transAxes, ha="right", fontsize=12, color=INK_2, va="center")
 
     t = [r["t"] for r in rows]
     avg = [r["avg"] if r["avg"] is not None else r["raw"] for r in rows]
+    sig.grid(axis="y", color=GRID, lw=1)
+    sig.set_axisbelow(True)
     if rows:
-        lo, hi = min(avg) - 4, max(avg) + 6
-        top.plot(t, avg, color=INK, lw=4, solid_capstyle="round")
-        top.fill_between(t, lo, avg, color=INK, alpha=0.06, lw=0)
-        top.set_ylim(lo, hi)
+        lo, hi = min(avg) - 5, max(avg) + 5
+        sig.plot(t, avg, color=INK_2, lw=2.2, solid_capstyle="round", zorder=3)
+        sig.plot(t[-1:], avg[-1:], "o", ms=8, color=INK, mec=SURFACE, mew=2, zorder=4)
+        sig.set_ylim(lo, hi)
         for r in rows:
-            if r["rule"]:
-                top.axvline(r["t"], color=RULE_RED, lw=2, ls=":")
-                top.text(r["t"] + 0.3, lo + 0.5, "old way buzzes", color=RULE_RED, fontsize=12, va="bottom")
             if r["alert"]:
-                top.axvline(r["t"], color=SIGNAL, lw=4)
-                top.text(r["t"] + 0.3, hi - 0.5, "Side Eye buzzes", color=SIGNAL, fontsize=14,
-                         fontweight="bold", va="top")
-    for nt, text in notes:
-        if "TP" in text or "FP" in text or text.startswith("Reported"):
-            label = "labelled: glasses there" if "TP" in text else "labelled: false alarm" if "FP" in text \
-                else "reported: missed"
-            top.text(nt, top.get_ylim()[1], label, color=INK_2, fontsize=11, ha="center", va="bottom")
-    top.set_yticks([])
-    top.set_xticks([])
-    top.set_xlim(left, right)
-    top.set_xlabel(f"Bluetooth signal over the last {window_s:g} seconds   (higher = stronger)", color=INK_2,
-                   fontsize=13)
+                sig.axvline(r["t"], color=SIGNAL, lw=1.5, zorder=2)
+                sig.text(r["t"] + 0.25, hi, "buzz", color=INK, fontsize=11, va="top")
+    sig.set_yticklabels([])
+    sig.set_xticks([])
+    sig.text(0.0, 1.0, "Bluetooth signal  ·  higher is stronger", transform=sig.transAxes, fontsize=11,
+             color=INK_2, va="bottom")
+
+    for y, color, runs in ((1, SIGNAL, _runs(rows, lambda r: r["score"] is not None and r["score"] >= level)),
+                           (0, RULE_C, _runs(rows, lambda r: r["streak"] >= 3.0))):
+        tracks.plot([left, right], [y, y], color=GRID, lw=6, solid_capstyle="round", zorder=1)
+        for start, width in runs:
+            tracks.plot([start, start + width], [y, y], color=color, lw=6, solid_capstyle="round", zorder=2)
+    for r in rows:
+        if r["alert"]:
+            tracks.plot([r["t"]], [1], "o", ms=12, color=SIGNAL, mec=SURFACE, mew=2.5, zorder=3)
+    tracks.set_ylim(-0.6, 1.6)
+    tracks.set_yticks([1, 0])
+    tracks.set_yticklabels(["Side Eye", "Strength rule"], color=INK, fontsize=12)
+    tracks.set_xticks([])
+    tracks.set_xlabel(f"last {window_s:g} seconds  ·  bar = thinks someone is lingering  ·  dot = buzz",
+                      color=INK_2, fontsize=11)
+    for ax in (sig, tracks):
+        ax.set_xlim(left, right)
 
 
 def main():
@@ -329,7 +347,8 @@ def main():
 
     plt.rcParams.update({"font.family": "sans-serif", "font.size": 10})
     if args.demo:
-        fig, axes = plt.subplots(2, 1, figsize=(12, 7), gridspec_kw={"height_ratios": [1.3, 3]})
+        plt.rcParams.update({"font.family": ["Helvetica Neue", "Helvetica", "Arial", "sans-serif"]})
+        fig, axes = plt.subplots(3, 1, figsize=(12.5, 7), gridspec_kw={"height_ratios": [1.15, 3, 0.85]})
     else:
         fig, axes = plt.subplots(2, 1, figsize=(11, 6.5), sharex=True, gridspec_kw={"height_ratios": [3, 2]})
     fig.patch.set_facecolor(SURFACE)
