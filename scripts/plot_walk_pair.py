@@ -3,7 +3,6 @@
 Usage (from the repo root, after model.joblib exists):
   python3 scripts/plot_walk_pair.py --out results/walk_pair.png                      # first passer + linger in data/runs_session2
   python3 scripts/plot_walk_pair.py --passer <file> --linger <file> --out ...        # pick the walks
-  python3 scripts/plot_walk_pair.py --db "$DATABASE_URL" --out ...                   # read the walks from Tiger
 
 Each column: signal against the near/far cutoff, then Model 3's score against 0.8. Shaded band =
 when the person was stopped (linger only, from the recording's labels). Solid line = Model 3's
@@ -35,16 +34,6 @@ def from_files(passer, linger):
     return pd.read_csv(pick("passer", passer)), pd.read_csv(pick("linger", linger))
 
 
-def from_tiger(url):
-    import psycopg
-    cols = "t, mean_rssi, var_rssi, slope, dwell_s, close_streak_s, label"
-    with psycopg.connect(url) as conn:
-        out = []
-        for kind in ("passer", "linger"):
-            run_id = conn.execute("SELECT run_id FROM walks WHERE scenario = %s ORDER BY run_id LIMIT 1", (kind,)).fetchone()[0]
-            rows = conn.execute(f"SELECT {cols} FROM walk_rows WHERE run_id = %s ORDER BY time", (run_id,)).fetchall()
-            out.append(pd.DataFrame(rows, columns=cols.split(", ")).assign(run_id=run_id))
-    return out
 
 
 def events(d, model):
@@ -65,10 +54,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--passer")
     ap.add_argument("--linger")
-    ap.add_argument("--db", help="read the walks from Tiger instead of data/runs_session2")
     ap.add_argument("--out", default=os.path.join(ROOT, "results", "walk_pair.png"))
     args = ap.parse_args()
-    walks = from_tiger(args.db) if args.db else from_files(args.passer, args.linger)
+    walks = from_files(args.passer, args.linger)
     model = joblib.load(os.path.join(ROOT, "model.joblib"))
     cutoff = json.load(open(os.path.join(ROOT, "settings.json")))["threshold_dbm"]
 

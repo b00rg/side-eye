@@ -25,9 +25,8 @@ Status: agreed by Rachel (B); Lili (A) and Emma (C) to confirm before recording 
   and the minute. **No device address, no raw signal trace.**
 - **Retraining:** every 20 new feedback rows the Pi retrains Model 3 in the background, and `live`
   switches to the new model by itself.
-- **Cloud (Tiger/Vultr):** holds our recorded walks, calibration, public data and simulated rows.
-  Feedback rows are synced only when asked (`scripts/tiger.py load --feedback feedback.db`), and are
-  anonymous. Live readings from strangers' devices never leave the Pi.
+- **Feedback stays on the Pi.** Only anonymous training rows are ever stored; live readings from
+  strangers' devices never leave the Pi. (Cloud storage is Emma's work on `main`.)
 - **Pitch line:** "Live device IDs never leave the device; only anonymous training numbers do."
 
 ## Main case we design for

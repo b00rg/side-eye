@@ -37,7 +37,7 @@ Exports `data/sim_rows.csv`, checks that Model 3 trains, rebuilds `Canary_code.z
 ```
 # Mac: unzip Canary_code.zip in ~/Downloads, then
 cd ~/Downloads/Canary_code
-scp canary*.py train_model.py feedback.py update_from_cloud.sh sim_rows.csv canary.service canary@canary.local:/home/canary/canary/
+scp canary*.py train_model.py feedback.py sim_rows.csv canary.service canary@canary.local:/home/canary/canary/
 scp -r tests canary@canary.local:/home/canary/canary/
 # Pi:
 cd /home/canary/canary
@@ -71,21 +71,8 @@ Top: signal vs the near/far cutoff. Bottom: Model 3's score vs 0.8. Solid BUZZ l
 fires; dotted line where the old 3-second rule would have. Rehearse without the Pi:
 `python3 scripts/fake_live.py --stream | python3 scripts/live_graph.py --stdin`, or replay recorded
 walks: `python3 scripts/live_graph.py --replay data/runs_session2/<walk>.csv ...`. Slide figure (a walk-past and
-a linger side by side): `python3 scripts/plot_walk_pair.py` (or `--db "$DATABASE_URL"` to read from
-Tiger); `deploy_model3.py` also makes it as `results/walk_pair.png`.
+a linger side by side): `python3 scripts/plot_walk_pair.py`; `deploy_model3.py` also makes it as `results/walk_pair.png`.
 
-## 7. Tiger (database) and Vultr (cloud compute)
-```
-export DATABASE_URL='postgres://...'           # Tiger Cloud connection string
-python3 scripts/tiger.py init                  # once
-python3 scripts/tiger.py load                  # walks, calibration, NIST, simulated rows
-python3 scripts/tiger.py load --feedback <copy of the Pi's feedback.db>   # optional, anonymous rows
-python3 scripts/tiger.py status
-```
-Vultr VM (Ubuntu 24.04): `GITHUB_TOKEN=... bash scripts/vultr/setup.sh` once, put `DATABASE_URL` in
-`~/side-eye/.env`, then `bash scripts/vultr/train_from_tiger.sh`: exports from Tiger, runs the full
-pipeline, writes `data/sim_rows.csv` and stores it back in Tiger. The Pi then pulls and retrains:
-`bash update_from_cloud.sh user@vultr-ip` (the VM can't reach the Pi behind the hotspot, so the Pi pulls).
 
 ## Demo note
 Demo commands and settings: `docs/DEMO.md` (shape model: walk in from 6 m+, stop ~2 m, stay ~15 s).

@@ -29,7 +29,6 @@ python3 pi/canary.py live --use-model     # motor follows Model 3; falls back to
 ```
 - `feedback.py`: the button (GPIO17 to GND, or `y` + Enter) saves anonymous training rows to
   `feedback.db`; `live` retrains every 20 new rows and reloads `model.joblib` by itself.
-- `update_from_cloud.sh user@vultr-ip`: fetch new simulated rows from the Vultr VM and retrain here.
 - The same files work in the repo (`pi/`) and flat on the Pi (`/home/canary/canary`); see
   `canary_core.project_root`.
 
