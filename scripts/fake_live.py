@@ -165,7 +165,8 @@ def main():
         try:
             asyncio.run(shape_live.main(run_args))
         except (KeyboardInterrupt, BrokenPipeError):
-            pass
+            # The graph window was closed: point stdout at /dev/null so the exit flush stays quiet.
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
         return
 
     print(f"Replaying {len(walks)} session-2 walks ({end / 60:.1f} min of fake time)\n")
