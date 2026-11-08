@@ -53,3 +53,15 @@ Reproduce: `python3 nist/shape_confirm.py --train data/runs_session1 --test data
   hold for longer) is the obvious fix, to be tested on new pre-registered walks, not tuned on these.
 - Limits: one room, one transmitter standing in for real glasses, small samples, and detection of
   switched-on glasses rather than recording (`docs/DECISIONS.md`).
+
+## Figures
+All from real recordings or public datasets; regenerate with `python3 scripts/figures.py [1-8]` (writes `docs/figures/`).
+
+1. `1_level_overlap.png`: session 1 signal levels by walk type overlap; no cutoff separates them.
+2. `2_nist_spread.png`: NIST data, one reading can't tell 2 m from 6 m.
+3. `3_h0h1.png`: MIT-LL H0H1 homes, threshold and random forest both stuck near 60-65%.
+4. `4_shape_traces.png`: three session-2 walks (first of each type, chosen by rule): signal and shape score. Two of the three are shape-model errors (a walk-past false alarm, a linger buzzed before the stop).
+5. `5_headline.png`: nDCF per method, session 1 (exploratory) vs session 2 (confirmatory, 95% CI).
+6. `6_walk_grid.png`: every session-2 walk, shape model vs 3-second rule.
+7. `7_robustness.png`: all 36 shape settings tried on session 1 beat never buzzing (exploratory).
+8. `8_transmitter.png`: Android phone vs UNO Q, readings per 20 s scan (few scans each).
