@@ -21,6 +21,15 @@ __pycache__/
 .DS_Store
 rule_wait_sweep.csv
 threshold_sweep.csv
+hypothesis_tests.csv
+sim_vs_real.csv
+ablations.csv
+det_curve.csv
+
+# Pipeline outputs (scripts/run_results.py); add real results with git add -f
+results/
+model.joblib
+data/sim_rows.csv
 
 # Secrets (Tiger Data credentials)
 .env

@@ -9,7 +9,11 @@ This file is the running record of where the data stands. Tasks reference the
 GitHub issues (T-numbers) in `TODO.md`.
 
 ## Pipeline
-Run every command from the repo root.
+**One command runs everything** on a folder of real walks: `python3 scripts/run_results.py --runs data/runs_session1` (add `--skip-ablations` for a quick pass). It reads the
+cutoff and reading rate itself, checks the walk mix, runs steps 1-3 below plus the analyses in the
+TODO list, prints the T25 decision, and writes everything to `results/` (with `results/log.txt`).
+
+The individual steps, if you need them. Run every command from the repo root.
 
 1. `scripts/get_mitre.sh`
    Clones MITRE Range-Angle (Structured) into `data/external/` and runs
@@ -18,9 +22,8 @@ Run every command from the repo root.
 2. After calibration (`python3 pi/canary.py calibrate`), `settings.json` is at the repo root
    (copy it off the Pi if you're working elsewhere), then
    `python3 nist/simulate_walks.py data/external/mitre_rssi.csv settings.json nist/sim --n 300 --rate <Pi packets/s>`
-   `nist/settings_example.json` has the same format and can stand in until then.
-3. After the 24 real walks are recorded into `data/runs/` (`python3 pi/canary.py record <scenario>`):
-   `python3 nist/compare_models.py --sim nist/sim --real data/runs --cutoff <threshold_dbm from settings.json>`
+3. With real walks in a session folder (e.g. `data/runs_session1/`):
+   `python3 nist/compare_models.py --sim nist/sim --real data/runs_session1 --cutoff <threshold_dbm from settings.json>`
    Prints the main table (rule waits 3 s, models alert at 0.8) plus two sweeps: the rule's wait
    (`--rule-waits`, default 1-6 s) and the models' score cutoff (`--thresholds`, default
    0.6,0.8,0.9). Saves `comparison_results.csv`, `rule_wait_sweep.csv`, `threshold_sweep.csv`.
@@ -30,11 +33,6 @@ Run every command from the repo root.
    `python3 nist/obstruction_losses.py data/external/nist/BLE_RSSI_Data data/external/vsc nist/obstruction_losses.json`
    Each simulated bag or blocked walk draws one loss from that file. If the file is missing,
    `simulate_walks.py` falls back to the old constants (`BLOCK_DB` 6, `BAG_DB` 9) and says so.
-5. Sanity mode without real walks: leave out `--real`, e.g.
-   `python3 nist/simulate_walks.py data/external/mitre_rssi.csv nist/settings_example.json nist/sim_test --n 200`
-   `python3 nist/compare_models.py --sim nist/sim_test --cutoff -68`
-
-`sim_check.png` is a visual check of simulated walks.
 
 **Slide figure (T21):** `nist/nist_spread.png`, rebuilt with
 `python3 nist/plot_spread.py data/external/nist/BLE_RSSI_Data nist/nist_spread.png`.
@@ -119,11 +117,13 @@ come from `nist/obstruction_losses.py` (see *Used by the simulation*).
 - **Why:** NIST logged under 1 reading/s (3 s is about 2 readings), and most of its variation
   is slow (reflections, advertising channel), not second-to-second jitter. So the 3-second
   wait isn't there to make the distance estimate accurate.
-- **What justifies 3 s is how long a walk-past stays close.** Walking 1.2 m/s with the closest
-  approach at 1.5 m, someone is inside 2 m for about 2.2 s; a slow walker (1.0 m/s) passing at
-  1.2 m, about 3.2 s. So 3 s is roughly the shortest wait that lets ordinary walk-pasts
-  through. Under 3 s near you: probably walking by. Over 3 s: they slowed or stopped. This is
-  the "too long" in "too close for too long".
+- **The wait has to cover how long a walk-past stays on the "near" side of the cutoff.**
+  Correction to an earlier version of this note, which assumed "near" ends at 2 m: calibration
+  puts the cutoff midway (in dB) between the 2 m and 6 m medians, which is about **3.5 m**
+  (the geometric mean, sqrt(2 x 6)). Walking 1.2 m/s with the closest approach at 1.5 m,
+  someone is inside 3.5 m for about **5.2 s** (6.2 s at 1.0 m/s). So with a clean signal a 3 s
+  rule buzzes at most walk-pasts, and at lingerers before they stop (as session 1 showed). Whether 3 s holds up is for the
+  rule-wait sweep on the real walks to show.
 - **The real test is on our walks** (added to T18): rerun the rule with the wait set to
   1-6 s and count lingers caught, walk-pasts wrongly buzzed and time to buzz.
 
@@ -156,9 +156,27 @@ calibration and all walks; blocked walk with B 0.5 m in front of the Pi (`BLOCK_
       Pi's own code, one snapshot per second like `canary.py record`. Before this, the old
       feature code disagreed with the Pi on whether the 3-second rule fires in 23% of seconds.
 - [x] T18: sweeps of the models' cutoff (`--thresholds`) and the rule's wait (`--rule-waits`), with a stop-to-alert column.
-- [ ] T22: set `--rate` from `packet_rate_hz` in the real walks.
+- [ ] T22: set `--rate` from `packet_rate_hz` in the real walks. Decimals now work (e.g. `--rate 1.35`):
+      a decimal rate gives a random (Poisson) number of readings per second, like the Pi's bursty
+      callbacks. Scan check (T7) at ~1 m: 27 callbacks in 20 s = 1.35/s, 30% of seconds empty.
 - [ ] T23: simulate about 300 walks and compare at `--sim-weight` 0.1 / 0.2 / 0.5.
-- [ ] Optional: also report TC4TL-style miss rate, false-alarm rate and nDCF.
+- [x] Pre-registered measures (`docs/PREREGISTRATION.md`): walks correct /24 with a 95% Wilson
+      interval in the main table, and exact one-sided McNemar tests for H1-H3
+      (`hypothesis_tests.csv`).
+- [x] Fake-vs-real check (`nist/sim_vs_real.py --sim nist/sim --real data/runs_session1 --cutoff <dBm>`):
+      AUC of a classifier telling simulated from real rows on held-out walks (0.5 = realistic),
+      per-input AUC, and medians by walk type. Validated: 0.47 on fake-vs-fake, 0.82 with a
+      6 dB shift planted in `mean_rssi`, which it flags.
+- [x] Ablations and learning curve (`nist/ablations.py --mitre ... --settings settings.json
+      --real data/runs_session1 --cutoff <dBm> --rate <Hz> [--seeds 0,1,2] [--auc]`): Models 2-3 with
+      50-1000 simulated walks, sim weight 0.1-1.0, guessed vs measured losses, Gaussian vs MITRE
+      noise. `simulate_walks.py --noise gaussian` added for the noise ablation. On fake walks the
+      AUC check flags Gaussian noise (0.74) but not MITRE replay (0.47).
+- [x] Miss vs false-alarm curve and TC4TL nDCF (`nist/det_curve.py --sim nist/sim --real data/runs_session1
+      --cutoff <dBm> --out nist/det_curve.png`): each model swept over score cutoffs, the rule over
+      waits of 1-8 s, walk-level miss and false-alarm rates, nDCF = miss + false alarm (TC4TL pilot
+      plan, weights 1/1), and row-level ROC AUC. The "best" setting is picked on the test walks, so
+      it is optimistic; the pre-registered settings are the honest numbers.
 - [x] Check `settings.json` key names match `NEAR_KEYS` / `FAR_KEYS`
       (`calibrate` writes `near_median` / `far_median`).
 

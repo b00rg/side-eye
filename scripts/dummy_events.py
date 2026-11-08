@@ -30,6 +30,7 @@ OUTCOMES = (("TP", 0.5), ("FP", 0.35), ("FN", 0.15))
 
 def dummy_rows(n, seed=7, now=None):
     rng = random.Random(seed)
+    shape_rng = random.Random(seed + 1)   # separate stream: the level features stay as they were
     now = now or datetime.now(timezone.utc)
     rows = []
     for i in range(n):
@@ -41,6 +42,11 @@ def dummy_rows(n, seed=7, now=None):
             mean, var, slope, dwell = rng.gauss(-67, 3), rng.uniform(4, 14), rng.gauss(1.2, 0.8), rng.uniform(3, 5)
         else:  # FN: glasses there but the rule stayed quiet
             mean, var, slope, dwell = rng.gauss(-62, 4), rng.uniform(1, 6), rng.gauss(0, 0.6), rng.uniform(2, 6)
+        # shape inputs (rise, drop, steady, held) as shape_live.py would upload them
+        u = shape_rng.uniform
+        rise, drop, steady, held = {"TP": (u(6, 14), u(0, 1), u(0.5, 2), u(4, 12)),     # arrived and stayed
+                                    "FP": (u(5, 10), u(0, 2), u(2, 4), u(1, 4)),       # peak of a walk-past
+                                    "FN": (u(2, 6), u(0, 3), u(1, 3), u(0, 3))}[outcome]
         buzzed = outcome != "FN"
         time = now - timedelta(hours=rng.uniform(1, 72))
         row = dict.fromkeys(COLUMNS)
@@ -52,6 +58,7 @@ def dummy_rows(n, seed=7, now=None):
             rule="3s-streak" if buzzed else None,
             rssi=round(mean + rng.gauss(0, 2)), mean_rssi=round(mean, 1), var_rssi=round(var, 2),
             slope=round(slope, 2), dwell_s=round(dwell, 1), close_streak_s=round(min(dwell, 3 + rng.uniform(0, 4)), 1),
+            rise=round(rise, 2), drop=round(drop, 2), steady=round(steady, 2), held=float(round(held)),
         )
         rows.append(row)
     return rows

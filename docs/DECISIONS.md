@@ -15,6 +15,20 @@ Status: agreed by Rachel (B); Lili (A) and Emma (C) to confirm before recording 
 - **Pitch lines to keep honest:** "We detect smart glasses that are switched on near you,
   not whether they're recording." and "We have not validated this on real smart glasses."
 
+## Feedback button and where data goes
+- **Button (Emma):** momentary push button between **physical pin 11 (GPIO17)** and **pin 9 (GND)**;
+  the Pi's internal pull-up is used, no resistor needed. Typing `y` + Enter in `live` does the same.
+- **Meaning:** press when **someone is lingering near you now**. The last ~10 s of the nearest signal
+  become "lingering" training rows (this also catches lingers the detector missed). An alert that
+  nobody confirms within 30 s (before or after it) becomes weak "not lingering" rows (weight 0.3).
+- **Stored on the Pi** (`feedback.db`), as anonymous rows only: the four model inputs, label, weight
+  and the minute. **No device address, no raw signal trace.**
+- **Retraining:** every 20 new feedback rows the Pi retrains Model 3 in the background, and `live`
+  switches to the new model by itself.
+- **Feedback stays on the Pi.** Only anonymous training rows are ever stored; live readings from
+  strangers' devices never leave the Pi. (Cloud storage is Emma's work on `main`.)
+- **Pitch line:** "Live device IDs never leave the device; only anonymous training numbers do."
+
 ## Main case we design for
 - **Glasses worn on someone's face.** That's what they're made for and what people worry
   about. Glasses on a table or tucked in a corner are an edge case we mention as a
@@ -27,6 +41,13 @@ Status: agreed by Rachel (B); Lili (A) and Emma (C) to confirm before recording 
   The demo only accepts our exact test packet (`058E` / `CA01`).
 - Matching on company ID can also catch other Meta devices (e.g. VR headsets). It's a known
   false-positive source; mention it as a limitation.
+
+## Transmitter (stand-in glasses)
+- **Arduino UNO Q** (`zeus`) broadcasting 0x058E / CA01 every 20 ms, starting by itself on power-up
+  (`transmitter/README.md`). Replaces the Android phone: ~9 readings/s at the Pi vs ~2, and no
+  Android throttling or screen locks. Pre-registration Amendment 2.
+- **Worn at head height** (cap or headband, power bank in a pocket), the same way for calibration
+  and every walk. This replaces "phone held at the right ear" below.
 
 ## Walk protocol (calibration and all 24 walks)
 - **Phone held at the right ear,** where glasses would sit, for calibration and every walk.

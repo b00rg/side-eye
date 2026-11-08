@@ -40,6 +40,12 @@ class SchemaMatchesCodeTests(unittest.TestCase):
     def test_label_updates_by_full_primary_key(self):
         self.assertIn("WHERE event_id = %s AND time = %s", LABEL_SQL)
 
+    def test_outcomes_view_is_recreated_so_new_columns_fit(self):
+        # CREATE OR REPLACE fails once events gains columns (they land before `outcome`).
+        drop, create = SCHEMA.index("DROP VIEW IF EXISTS event_outcomes"), SCHEMA.index("CREATE VIEW event_outcomes")
+        self.assertLess(drop, create)
+        self.assertLess(SCHEMA.index("ADD COLUMN IF NOT EXISTS held"), create)
+
     def test_outcomes_view_covers_all_cases(self):
         for outcome in ("'TP'", "'FP'", "'FN'", "'pending'"):
             self.assertIn(outcome, SCHEMA)
@@ -69,7 +75,7 @@ class SetupScriptTests(unittest.TestCase):
         self.assertGreaterEqual(len(statements), 10)
         for statement in statements:
             self.assertNotIn("--", statement)
-            self.assertRegex(statement, r"^(CREATE|SELECT|ALTER)\b", statement[:60])
+            self.assertRegex(statement, r"^(CREATE|SELECT|ALTER|DROP VIEW)\b", statement[:60])   # never DROP TABLE
 
     def test_semicolons_inside_comments_do_not_split(self):
         sql = "CREATE TABLE t (a int -- one; two\n);\nSELECT 1;"

@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS events (
     glasses_ref     text,                   -- keyed hash of the BLE address, rotates daily, NULL for user reports
     signature       text,                   -- what matched, e.g. phone_simulator or company_0x058e
     demo            boolean     NOT NULL DEFAULT false, -- true for the nRF Connect phone stand-in
-    rule            text,                   -- which rule fired, e.g. 3s-streak
+    rule            text,                   -- which rule fired: 3s-streak, level-model or shape-model
     rssi            smallint,
     mean_rssi       real,
     var_rssi        real,
@@ -31,9 +31,20 @@ CREATE TABLE IF NOT EXISTS events (
     dwell_s         real,
     close_streak_s  real,
     ml_score        real,
+    -- the shape model's inputs at that second (pi/shape_core.py); NULL for rows from canary.py live
+    rise            real,
+    drop            real,
+    steady          real,
+    held            real,
     PRIMARY KEY (event_id, time),
     CONSTRAINT no_true_negatives CHECK (buzzed OR glasses_present IS TRUE)
 );
+
+-- Tables created before the shape columns existed get them here (nullable, so this is instant).
+ALTER TABLE events ADD COLUMN IF NOT EXISTS rise real;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS drop real;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS steady real;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS held real;
 
 SELECT create_hypertable('events', by_range('time', INTERVAL '1 day'), if_not_exists => TRUE);
 
@@ -41,7 +52,10 @@ CREATE INDEX IF NOT EXISTS events_device_time ON events (device_id, time DESC);
 CREATE INDEX IF NOT EXISTS events_pending ON events (time DESC) WHERE buzzed AND glasses_present IS NULL;
 
 -- Each row with its outcome spelled out, for queries and dashboards.
-CREATE OR REPLACE VIEW event_outcomes AS
+-- Dropped and recreated (not CREATE OR REPLACE): `SELECT *` picks up columns added to events later,
+-- and Postgres won't replace a view whose columns move. Nothing depends on it; it holds no data.
+DROP VIEW IF EXISTS event_outcomes;
+CREATE VIEW event_outcomes AS
 SELECT *,
     CASE
         WHEN buzzed AND glasses_present      THEN 'TP'

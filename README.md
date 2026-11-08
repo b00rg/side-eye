@@ -41,9 +41,9 @@ Because 24 walks is very little data, we also simulate thousands of walks from p
 ```
 pi/        Raspberry Pi code: scanner, features, rule, training, service, tests
 nist/      public-data simulation and model comparison
-data/      real walks in data/runs/; public datasets in data/external/ (ignored)
+data/      real walks: data/runs_session1/, data/runs_session2/; public datasets in data/external/ (ignored)
 scripts/   setup helpers
-gcp/       nightly retraining on Google Cloud: Tiger Data labels -> model.joblib -> Pi (gcp/README.md)
+gcp/       retraining on Google Cloud: Tiger Data labels + walks -> shape_model.joblib -> Pi (gcp/README.md)
 docs/      decisions and scope (docs/DECISIONS.md)
 ```
 
@@ -66,7 +66,7 @@ python3 pi/canary.py live                 # run the detector
 ```
 scripts/get_mitre.sh                       # clone MITRE, build data/external/mitre_rssi.csv
 python3 nist/simulate_walks.py data/external/mitre_rssi.csv settings.json nist/sim --n 300 --rate <Pi packets/s>
-python3 nist/compare_models.py --sim nist/sim --real data/runs --cutoff <threshold_dbm from settings.json>
+python3 scripts/run_results.py --runs data/runs_session1      # all tables, tests and the T25 decision
 ```
 Details and TODOs in `nist/README.md`.
 

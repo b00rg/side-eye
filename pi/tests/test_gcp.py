@@ -204,6 +204,7 @@ class FetchModelTest(FakeCloud):
         joblib.dump(model, self.bucket / "model.joblib")
         self.write_info(sklearn.__version__)
         self.env["FAKE_BUCKET"] = str(self.bucket)
+        self.env["MODEL"] = "level"   # these tests cover the level model; FetchShapeModelTest the default
         (self.tmp / "home" / "side-eye-pi-key.json").write_text("{}")
 
     def write_info(self, sklearn_version):
@@ -260,6 +261,71 @@ class FetchModelTest(FakeCloud):
         self.assertFalse((self.repo / "model.joblib").exists())
 
 
+class FetchShapeModelTest(FetchModelTest):
+    """Default MODEL=shape: installs shape_model.joblib from retrain_shape.py, never a level model."""
+
+    def setUp(self):
+        super().setUp()
+        import joblib
+        import sklearn
+        from sklearn.ensemble import RandomForestClassifier
+
+        del self.env["MODEL"]
+        model = RandomForestClassifier(n_estimators=2, random_state=0).fit([[6, 0, 1, 5], [0, 6, 1, 0]], [1, 0])
+        model.feature_names_shape = ("rise", "drop", "steady", "held")
+        joblib.dump(model, self.bucket / "shape_model.joblib")
+        (self.bucket / "models" / "shape_latest.json").write_text(json.dumps({
+            "sklearn": sklearn.__version__, "model": "shape_model-20261108T030000Z.joblib",
+            "tiger_events": 5, "walks": 40}))
+
+    def test_installs_model_and_keeps_previous(self):
+        (self.repo / "shape_model.joblib").write_text("old model")
+        result = self.fetch()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.repo / "shape_model.joblib.prev").read_text(), "old model")
+        self.assertEqual((self.repo / "shape_model.joblib").read_bytes(),
+                         (self.bucket / "shape_model.joblib").read_bytes())
+        self.assertEqual(json.loads((self.repo / "shape_model.json").read_text())["walks"], 40)
+        self.assertIn("Installed shape_model-20261108T030000Z.joblib", result.stdout)
+        self.assertFalse((self.repo / "model.joblib").exists())
+
+    def test_rejects_level_model_as_shape_model(self):
+        import shutil as sh
+
+        sh.copyfile(self.bucket / "model.joblib", self.bucket / "shape_model.joblib")   # 4 inputs, wrong kind
+        (self.repo / "shape_model.joblib").write_text("old model")
+        self.assertNotEqual(self.fetch().returncode, 0)
+        self.assertEqual((self.repo / "shape_model.joblib").read_text(), "old model")
+
+    def test_refuses_model_from_other_sklearn(self):
+        info = json.loads((self.bucket / "models" / "shape_latest.json").read_text())
+        (self.bucket / "models" / "shape_latest.json").write_text(json.dumps({**info, "sklearn": "0.0.1"}))
+        (self.repo / "shape_model.joblib").write_text("old model")
+        result = self.fetch()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.repo / "shape_model.joblib").read_text(), "old model")
+
+    def test_force_installs_anyway(self):
+        result = self.fetch("--force")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.repo / "shape_model.joblib").is_file())
+
+    def test_rejects_model_with_wrong_features(self):
+        import joblib
+        from sklearn.ensemble import RandomForestClassifier
+
+        joblib.dump(RandomForestClassifier(n_estimators=2).fit([[1, 2], [3, 4]], [0, 1]),
+                    self.bucket / "shape_model.joblib")
+        (self.repo / "shape_model.joblib").write_text("old model")
+        self.assertNotEqual(self.fetch().returncode, 0)
+        self.assertEqual((self.repo / "shape_model.joblib").read_text(), "old model")
+
+    def test_missing_model_in_bucket_fails_cleanly(self):
+        (self.bucket / "shape_model.joblib").unlink()
+        self.assertNotEqual(self.fetch().returncode, 0)
+        self.assertFalse((self.repo / "shape_model.joblib").exists())
+
+
 class ConfigTest(unittest.TestCase):
     def test_image_writes_to_the_bucket_mount(self):
         dockerfile = (GCP / "Dockerfile").read_text()
@@ -275,7 +341,8 @@ class ConfigTest(unittest.TestCase):
     def test_image_contains_code_and_walks(self):
         dockerfile = (GCP / "Dockerfile").read_text()
         self.assertIn("COPY pi/ pi/", dockerfile)
-        self.assertIn("COPY data/runs/ data/runs/", dockerfile)
+        self.assertIn("COPY data/runs_session1/ data/runs_session1/", dockerfile)
+        self.assertIn("COPY data/runs_session2/ data/runs_session2/", dockerfile)
 
     def test_cloudbuild_uses_the_gcp_dockerfile(self):
         text = (GCP / "cloudbuild.yaml").read_text()
