@@ -95,3 +95,33 @@ the ear gave ~0.8 per second, too few for the Pi's 5-readings-in-5-s row rule. A
 broadcasting the same packet (0x058E / CA01) every 20 ms reached ~9 per second (184 in 20 s) on a
 power bank. Calibration and all 24 walks use the UNO Q, worn at head height (`transmitter/README.md`).
 Everything else in this pre-registration is unchanged.
+
+## Amendment 3: session 2 (written after session 1, before session 2 was recorded)
+
+**Session 1** (24 walks, 7 Nov 2026, `data/runs_session1/`) is reported in full as pre-registered.
+In short: Rule 1/24 walks correct (16/16 false-alarm walks), Model 1 15/24, Model 2 8/24, Model 3
+16/24; H2 and H3 "supported", H1 not shown. But a device that never alerts also scores 16/24 (16
+of 24 walks are non-linger), and Model 3 reached 16/24 by never alerting. TC4TL nDCF was ≥ 1.0
+for every method (no better than never alerting), and the fake-vs-real AUC was 0.93. The T25 rule
+said "Model 3 drives the motor"; we did **not** deploy it, because it never buzzes. Causes found:
+the calibration (2 m read -56 dBm) was ~6 dB weaker than the same spot during walks (stopped
+lingers read -49.7), so the cutoff (-59.5) sat beyond the 4 m walks; and the simulation, anchored to
+those calibration points, was ~8 dB weaker and half as noisy as the real walks.
+
+**Session 2 protocol changes** (everything else as above):
+- Calibrate immediately before recording, the walker wearing the transmitter and facing the Pi:
+  "near" on the 2 m linger stop spot, "far" on the **4 m** mark (not 6 m).
+- Walks recorded in the shuffled order.
+- The simulation is re-anchored to **session 1's walks** (`nist/anchor_from_walks.py` ->
+  `nist/sim_anchor.json`): stopped-linger signal at 2 m, far-walk signal at 4 m, and noise scaled to
+  session 1's wobble. Fixed before session 2; session 2 is not used to tune it.
+
+**Evaluation of session 2:** same methods, folds, hypotheses (H1-H3) and statistics as above, on the
+24 session-2 walks. Each table also shows a **"never alert"** reference row.
+
+**New T25 rule (replaces Amendment 1's):** Model 3 drives the motor only if, at its pre-registered
+settings on session 2, it (a) catches at least 4 of 8 lingers on time, (b) has a TC4TL nDCF below
+1.0, and (c) has a lower nDCF than the 3-second rule. Otherwise the motor keeps the rule, and we say
+the models did not clear the bar.
+
+Analyses pooling sessions 1 and 2, or tuned after seeing session 2, are exploratory.
