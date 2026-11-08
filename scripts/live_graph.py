@@ -4,6 +4,7 @@ Usage (from the repo root):
   python3 scripts/live_graph.py --ssh canary@canary.local          # the Pi's running canary.service
   python3 scripts/fake_live.py --stream | python3 scripts/live_graph.py --stdin   # rehearse, no Pi
   python3 scripts/live_graph.py --replay data/runs_session2/<walk>.csv ...  # recorded walks through Model 3
+  add --demo for the audience view (big plain-English status, one signal line, score vs buzz line)
   add --snapshot out.png [--duration 90] to save a still image instead of opening a window
 
 Top panel: signal strength (raw readings as dots, smoothed average as a line) against the near/far
@@ -202,6 +203,75 @@ def draw(fig, axes, feed, window_s, title):
     fig.suptitle(f"{title}    {state}", x=0.08, y=0.995, ha="left", fontsize=14, fontweight="bold", color=INK)
 
 
+def draw_demo(fig, axes, feed, window_s, title):
+    """Audience view: a plain-English status line, one smooth signal line, and the score vs the buzz line."""
+    rows, notes, _ = feed.snapshot()
+    banner, top, bottom = axes
+    for ax in axes:
+        ax.clear()
+        ax.set_facecolor(SURFACE)
+        for side in ax.spines.values():
+            side.set_visible(False)
+        ax.tick_params(colors=INK_2, length=0, labelsize=11)
+    banner.axis("off")
+    now = rows[-1]["t"] if rows else 0.0
+    left, right = max(0.0, now - window_s), max(window_s, now) + 1
+    level = feed.alert_level
+    recent = [r for r in rows if r["t"] >= now - 4]
+    score = rows[-1]["score"] if rows else None
+    if any(r["alert"] for r in recent):
+        status, color = "BUZZ!  Someone's lingering", INK
+    elif not rows or score is None:
+        status, color = "No glasses nearby", INK_2
+    elif score >= level:
+        status, color = "They're staying...", SCORE
+    elif score >= 0.3:
+        status, color = "Someone's coming closer...", SIGNAL
+    else:
+        status, color = "Glasses nearby - just passing", INK_2
+    banner.text(0.0, 0.5, status, fontsize=30, fontweight="bold", color=color, va="center",
+                transform=banner.transAxes)
+    for nt, text in notes:
+        if nt >= now - 6 and ("TP" in text or "FP" in text or text.startswith("Reported")):
+            label = ("Labelled: glasses were there" if "TP" in text else "Labelled: false alarm" if "FP" in text
+                     else "Reported: missed glasses")
+            banner.text(1.0, 0.5, label, fontsize=15, color=INK_2, va="center", ha="right", transform=banner.transAxes)
+    t = [r["t"] for r in rows]
+    avg = [r["avg"] if r["avg"] is not None else r["raw"] for r in rows]
+    if rows:
+        lo, hi = min(avg) - 4, max(avg) + 4
+        top.plot(t, avg, color=SIGNAL, lw=4, solid_capstyle="round")
+        top.fill_between(t, lo, avg, color=SIGNAL, alpha=0.12, lw=0)
+        top.set_ylim(lo, hi)
+    top.set_yticks([])
+    top.set_xticks([])
+    top.text(0.0, 1.02, "Bluetooth signal   (higher = stronger)", transform=top.transAxes, fontsize=14,
+             color=INK_2, va="bottom")
+    scores = [r["score"] if r["score"] is not None else 0.0 for r in rows]
+    bottom.axhspan(level, 1.05, color=SCORE, alpha=0.08, lw=0)
+    if rows:
+        bottom.plot(t, scores, color=SCORE, lw=4, solid_capstyle="round")
+        bottom.fill_between(t, 0, scores, color=SCORE, alpha=0.15, lw=0)
+    bottom.axhline(level, color=INK, lw=2, ls=(0, (6, 4)))
+    bottom.text(right - 0.3, level + 0.03, "buzz line", ha="right", va="bottom", fontsize=13, color=INK,
+                fontweight="bold")
+    bottom.set_ylim(0, 1.05)
+    bottom.set_yticks([0, 0.5, 1])
+    bottom.set_yticklabels(["0%", "50%", "100%"])
+    bottom.text(0.0, 1.02, "How sure it is someone's staying", transform=bottom.transAxes, fontsize=14,
+                color=INK_2, va="bottom")
+    bottom.set_xlabel("last 30 seconds" if window_s == 30 else f"last {window_s:g} seconds", color=INK_2,
+                      fontsize=12)
+    bottom.set_xticks([])
+    for r in rows:
+        if r["alert"]:
+            for ax in (top, bottom):
+                ax.axvline(r["t"], color=INK, lw=3)
+            top.text(r["t"] + 0.3, top.get_ylim()[1], "BUZZ", fontsize=16, fontweight="bold", color=INK, va="top")
+    for ax in (top, bottom):
+        ax.set_xlim(left, right)
+
+
 def main():
     ap = argparse.ArgumentParser()
     src = ap.add_mutually_exclusive_group(required=True)
@@ -211,6 +281,8 @@ def main():
     ap.add_argument("--window", type=float, default=60, help="seconds shown")
     ap.add_argument("--speed", type=float, default=1.0,
                     help="replay speed; with --stdin, match fake_live.py --speed to keep real seconds")
+    ap.add_argument("--demo", action="store_true",
+                    help="audience view: plain-English status, one signal line, score vs the buzz line (30 s window)")
     ap.add_argument("--snapshot", help="save a still PNG after --duration seconds instead of a live window")
     ap.add_argument("--duration", type=float, default=60)
     args = ap.parse_args()
@@ -221,7 +293,10 @@ def main():
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
 
+    if args.demo and args.window == 60:
+        args.window = 30
     feed = Feed(args.window)
+    painter = draw_demo if args.demo else draw
     if args.ssh:
         proc = subprocess.Popen(["ssh", args.ssh, "journalctl -u canary.service -f -n 20 -o cat"],
                                 stdout=subprocess.PIPE, text=True)
@@ -233,18 +308,21 @@ def main():
     threading.Thread(target=read_stream, args=(source, feed, args.speed if args.stdin else 1.0), daemon=True).start()
 
     plt.rcParams.update({"font.family": "sans-serif", "font.size": 10})
-    fig, axes = plt.subplots(2, 1, figsize=(11, 6.5), sharex=True, gridspec_kw={"height_ratios": [3, 2]})
+    if args.demo:
+        fig, axes = plt.subplots(3, 1, figsize=(12, 7.5), gridspec_kw={"height_ratios": [0.7, 2.2, 2]})
+    else:
+        fig, axes = plt.subplots(2, 1, figsize=(11, 6.5), sharex=True, gridspec_kw={"height_ratios": [3, 2]})
     fig.patch.set_facecolor(SURFACE)
     if args.snapshot:
         time.sleep(args.duration)
-        draw(fig, axes, feed, args.window, title)
+        painter(fig, axes, feed, args.window, title)
         fig.tight_layout()
         fig.savefig(args.snapshot, dpi=150, facecolor=SURFACE)
         rows = feed.snapshot()[0]
         print(f"Saved {args.snapshot}: {len(rows)} rows in view, {sum(r['alert'] for r in rows)} BUZZ, "
               f"{sum(r['rule'] for r in rows)} rule-would-buzz", flush=True)
         os._exit(0)
-    _anim = FuncAnimation(fig, lambda _: draw(fig, axes, feed, args.window, title), interval=500, cache_frame_data=False)
+    _anim = FuncAnimation(fig, lambda _: painter(fig, axes, feed, args.window, title), interval=500, cache_frame_data=False)
     fig.tight_layout()
     plt.show()
 
