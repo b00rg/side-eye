@@ -34,6 +34,20 @@ class ProjectRootTests(unittest.TestCase):
             self.assertEqual(project_root(repo / "pi" / "canary.py"), repo.resolve())
             self.assertEqual(project_root(flat / "canary.py"), flat.resolve())
 
+    def test_cloud_image_layout_without_nist(self):
+        """gcp/Dockerfile copies only pi/ and data/: the walks must still be found under /app/data."""
+        with tempfile.TemporaryDirectory() as d:
+            app = Path(d) / "app"
+            (app / "pi").mkdir(parents=True)
+            (app / "data" / "runs_session1").mkdir(parents=True)
+            self.assertEqual(project_root(app / "pi" / "retrain_shape.py"), app.resolve())
+
+    def test_flat_folder_with_its_own_data_stays_flat(self):
+        with tempfile.TemporaryDirectory() as d:
+            flat = Path(d) / "canary"
+            (flat / "data").mkdir(parents=True)
+            self.assertEqual(project_root(flat / "canary.py"), flat.resolve())
+
 
 class Model3TrainingTests(unittest.TestCase):
     def test_sim_rows_train_and_save_model(self):
