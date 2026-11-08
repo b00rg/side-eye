@@ -81,24 +81,29 @@ def check_inputs(log):
 
 
 def t25_decision(log):
-    """docs/PREREGISTRATION.md, Amendment 1: Model 3 is the planned deployment model. It drives the
-    motor if it gets more walks correct than the rule AND has no more false-alarm walks; else the rule stays."""
+    """docs/PREREGISTRATION.md, Amendment 3: Model 3 drives the motor only if it (a) catches at least
+    4 of 8 lingers on time, (b) has TC4TL nDCF < 1.0, and (c) has lower nDCF than the rule."""
     t = pd.read_csv(os.path.join(OUT, "comparison_results.csv")).set_index("method")
-    num = lambda s: int(str(s).split("/")[0])
-    rule, m3 = t.loc["Rule (3 s)"], t.loc["Model 3: sim + real"]
-    log(f"\n{'=' * 78}\nT25: what drives the motor (docs/PREREGISTRATION.md, Amendment 1)\n{'=' * 78}")
+    frac = lambda s: tuple(int(x) for x in str(s).split("/"))
+
+    def ndcf(row):
+        (hit, lingers), (fa, negatives) = frac(row.linger_detected), frac(row.false_alarm_walks)
+        return (1 - hit / lingers) + fa / negatives
+    log(f"\n{'=' * 78}\nT25: what drives the motor (docs/PREREGISTRATION.md, Amendment 3)\n{'=' * 78}")
     for name in t.index:
         r = t.loc[name]
-        log(f"  {name:20s} {r.walks_correct:>6} walks correct, {r.false_alarm_walks:>6} false-alarm walks")
-    better = num(m3.walks_correct) > num(rule.walks_correct)
-    no_more_fa = num(m3.false_alarm_walks) <= num(rule.false_alarm_walks)
-    log(f"\n  Model 3 vs rule: {'more' if better else 'not more'} walks correct, "
-        f"{'no more' if no_more_fa else 'more'} false alarms")
-    if better and no_more_fa:
+        log(f"  {name:20s} lingers {r.linger_detected:>4}, false alarms {r.false_alarm_walks:>6}, nDCF {ndcf(r):.2f}")
+    m3, rule = t.loc["Model 3: sim + real"], t.loc["Rule (3 s)"]
+    checks = [("catches >= 4/8 lingers", frac(m3.linger_detected)[0] >= 4),
+              ("nDCF < 1.0", ndcf(m3) < 1.0),
+              ("nDCF lower than the rule's", ndcf(m3) < ndcf(rule))]
+    for label, ok in checks:
+        log(f"  Model 3 {label}: {'yes' if ok else 'NO'}")
+    if all(ok for _, ok in checks):
         log("  DECISION: Model 3 drives the motor. Next: python3 scripts/deploy_model3.py")
     else:
-        log("  DECISION: keep the 3-second rule (Model 3 didn't clear the bar). Say so in the pitch.")
-    return better and no_more_fa
+        log("  DECISION: keep the 3-second rule; Model 3 did not clear the bar. Say so in the pitch.")
+    return all(ok for _, ok in checks)
 
 
 def main():
@@ -110,10 +115,13 @@ def main():
     log = Log(os.path.join(OUT, "log.txt"))
     cutoff, rate = check_inputs(log)
     sim = p("nist", "sim")
+    anchor = p("nist", "sim_anchor.json")
+    anchor_args = ["--anchor", anchor] if os.path.exists(anchor) else []
+    log(f"  simulation anchored to: {'nist/sim_anchor.json (session 1 walks)' if anchor_args else 'calibration medians'}")
 
     run(log, "1. Lili's training printout (pi/train_model.py)", [p("pi", "train_model.py")], cwd=ROOT)
     run(log, "2. Simulate 300 walks (seed 0)", [p("nist", "simulate_walks.py"), p("data", "external", "mitre_rssi.csv"),
-                                                p("settings.json"), sim, "--n", "300", "--rate", str(rate), "--seed", "0"])
+                                                p("settings.json"), sim, "--n", "300", "--rate", str(rate), "--seed", "0", *anchor_args])
     run(log, "3. Rule vs Models 1-3, pre-registered tests, sweeps",
         [p("nist", "compare_models.py"), "--sim", sim, "--real", RUNS, "--cutoff", str(cutoff)])
     run(log, "4. Fake-vs-real check", [p("nist", "sim_vs_real.py"), "--sim", sim, "--real", RUNS, "--cutoff", str(cutoff)])
@@ -123,7 +131,7 @@ def main():
     if not args.skip_ablations:
         run(log, "6. Ablations and learning curve (exploratory; takes a minute or two per seed)",
             [p("nist", "ablations.py"), "--mitre", p("data", "external", "mitre_rssi.csv"), "--settings", p("settings.json"),
-             "--real", RUNS, "--cutoff", str(cutoff), "--rate", str(rate), "--seeds", args.seeds])
+             "--real", RUNS, "--cutoff", str(cutoff), "--rate", str(rate), "--seeds", args.seeds, *anchor_args])
     t25_decision(log)
     log(f"\nAll outputs are in {OUT}/ (tables as CSV, det_curve.png, log.txt).")
 

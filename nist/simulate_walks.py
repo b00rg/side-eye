@@ -83,7 +83,7 @@ def path_linger(rng):
 
 
 def path_far(rng):
-    d = np.full(int(rng.uniform(20, 30)), rng.uniform(3.5, 6.0))
+    d = np.full(int(rng.uniform(20, 30)), rng.uniform(3.7, 4.3))   # protocol: stand on the 4 m mark
     return d, np.zeros(len(d), int)
 
 
@@ -95,7 +95,7 @@ def path_static(rng, lo, hi):
 MIX = {"passer": 0.35, "linger": 0.35, "far": 0.1, "bag": 0.1, "blocked": 0.1}
 
 
-def simulate(df, A, n, a, b, kind, rng, rate, losses, noise_mode="mitre"):
+def simulate(df, A, n, a, b, kind, rng, rate, losses, noise_mode="mitre", noise_scale=1.0):
     if kind == "passer":
         d, y = path_passer(rng); extra = 0.0
     elif kind == "linger":
@@ -124,6 +124,7 @@ def simulate(df, A, n, a, b, kind, rng, rate, losses, noise_mode="mitre"):
     noise = np.tile(resid, reps)
     off = rng.integers(0, len(resid))
     noise = noise[off: off + need]
+    noise = noise * noise_scale    # 1.0 = MITRE's own wobble; >1 when real walks wobble more (sim_anchor.json)
     if noise_mode == "gaussian":   # ablation: same spread, but independent each reading
         noise = rng.normal(0.0, resid.std(), need)
 
@@ -146,6 +147,8 @@ def main():
                    help="mean readings per second; use the median packet_rate_hz of the real walks (decimals ok)")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--losses", default=LOSSES, help="obstruction losses JSON from nist/obstruction_losses.py")
+    p.add_argument("--anchor", help="sim_anchor.json from nist/anchor_from_walks.py: anchor the signal levels "
+                   "and wobble to real recorded walks instead of the 2 m / 6 m calibration medians")
     p.add_argument("--noise", choices=["mitre", "gaussian"], default="mitre",
                    help="mitre: replay a real recording's jitter (default); gaussian: ablation, random noise of the same spread")
     args = p.parse_args()
@@ -155,7 +158,12 @@ def main():
     A, n, med = fit_path_loss(df)
     s = json.load(open(args.settings))
     near, far = pick(s, NEAR_KEYS), pick(s, FAR_KEYS)
-    m2, m6 = rssi_mean(2.0, A, n), rssi_mean(6.0, A, n)
+    near_m, far_m, noise_scale, anchor_src = 2.0, 6.0, 1.0, "settings (2 m / 6 m calibration medians)"
+    if args.anchor:
+        anc = json.load(open(args.anchor))
+        near, far, near_m, far_m = anc["near_dbm"], anc["far_dbm"], anc["near_m"], anc["far_m"]
+        noise_scale, anchor_src = anc.get("noise_scale", 1.0), f"walks ({args.anchor})"
+    m2, m6 = rssi_mean(near_m, A, n), rssi_mean(far_m, A, n)
     a = (near - far) / (m2 - m6)
     b = near - a * m2
 
@@ -165,20 +173,23 @@ def main():
     kinds = rng.choice(list(MIX), size=args.n, p=list(MIX.values()))
     manifest = []
     for i, k in enumerate(kinds):
-        r, lab, src, extra = simulate(df, A, n, a, b, k, rng, args.rate, losses, args.noise)
+        r, lab, src, extra = simulate(df, A, n, a, b, k, rng, args.rate, losses, args.noise, noise_scale)
         name = f"sim_{i:04d}_{k}"
         r.to_csv(os.path.join(args.out_dir, name + "_readings.csv"), index=False)
         lab.to_csv(os.path.join(args.out_dir, name + "_labels.csv"), index=False)
         manifest.append(dict(walk=name, kind=k, seconds=len(lab), positives=int(lab.label.sum()), mitre_file=src, loss_db=extra))
     pd.DataFrame(manifest).to_csv(os.path.join(args.out_dir, "manifest.csv"), index=False)
 
-    info = dict(obstruction_losses=loss_src, noise=args.noise, A=A, n=n, mitre_pred_2m=m2, mitre_pred_6m=m6, scale=a, shift=b,
+    info = dict(anchor=anchor_src, near_m=near_m, far_m=far_m, noise_scale=noise_scale,
+                obstruction_losses=loss_src, noise=args.noise, A=A, n=n, mitre_pred_2m=m2, mitre_pred_6m=m6, scale=a, shift=b,
                 pi_near=near, pi_far=far, android_files=int(df.file.nunique()),
                 mitre_medians={str(k): float(v) for k, v in med.items()})
     json.dump(info, open(os.path.join(args.out_dir, "calibration.json"), "w"), indent=2)
     print(f"obstruction losses: {loss_src}")
     print(f"path loss: A={A:.1f} dBm at 1 m, n={n:.2f}")
-    print(f"MITRE 2 m {m2:.1f} -> Pi {near:.1f};  MITRE 6 m {m6:.1f} -> Pi {far:.1f}  (scale {a:.2f}, shift {b:.1f})")
+    print(f"anchored to {anchor_src}; noise x{noise_scale:.2f}")
+    print(f"MITRE {near_m:g} m {m2:.1f} -> Pi {near:.1f};  MITRE {far_m:g} m {m6:.1f} -> Pi {far:.1f}  "
+          f"(scale {a:.2f}, shift {b:.1f})")
     print(pd.DataFrame(manifest).kind.value_counts().to_string())
 
 

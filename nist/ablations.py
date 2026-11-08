@@ -40,7 +40,7 @@ VARIANTS = (
 
 
 def sim_dir(v, seed, root):
-    return os.path.join(root, f"n{v['n']}_{v['losses']}_{v['noise']}_s{seed}")
+    return os.path.join(root, f"n{v['n']}_{v['losses']}_{v['noise']}_s{seed}")   # cleared per run in main()
 
 
 def ensure_sim(v, seed, args):
@@ -48,6 +48,8 @@ def ensure_sim(v, seed, args):
     if not os.path.exists(os.path.join(out, "manifest.csv")):
         cmd = [sys.executable, os.path.join(HERE, "simulate_walks.py"), args.mitre, args.settings, out,
                "--n", str(v["n"]), "--rate", str(args.rate), "--seed", str(seed), "--noise", v["noise"]]
+        if args.anchor:
+            cmd += ["--anchor", args.anchor]
         if v["losses"] == "guessed":
             cmd += ["--losses", os.path.join(out, "no_such_file.json")]   # forces the fallback constants
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
@@ -67,12 +69,15 @@ def main():
     ap.add_argument("--cutoff", type=float, required=True)
     ap.add_argument("--rate", type=float, default=8)
     ap.add_argument("--seeds", type=floats, default=[0])
+    ap.add_argument("--anchor", help="sim_anchor.json passed to simulate_walks.py")
     ap.add_argument("--auc", action="store_true", help="also compute the fake-vs-real AUC per variant")
     ap.add_argument("--work", default=os.path.join(HERE, "sim_ablations"), help="where simulated walks go (gitignored)")
     args = ap.parse_args()
     if args.auc:
         from sim_vs_real import heldout_auc
 
+    import shutil
+    shutil.rmtree(args.work, ignore_errors=True)   # never reuse walks simulated with other settings
     test_pool = load_real(args.real)
     rows, fixed = [], None
     for group, v in VARIANTS:
@@ -84,8 +89,16 @@ def main():
                 rule = {w: c for f in scored for w, c in score_walks(f, rule_wait=3)["correct"].items()}
                 fixed = {"Rule (3 s)": rule, MODELS[0]: o[MODELS[0]]}
             b, c, p = mcnemar(o[MODELS[2]], o[MODELS[0]])
+            kinds = test_pool.groupby("walk").kind.first()
+
+            def ndcf(oc):
+                """TC4TL-style miss rate + false-alarm rate (1.0 = same as never alerting)."""
+                lin = [w for w in oc if kinds[w] == "linger"]
+                neg = [w for w in oc if kinds[w] != "linger"]
+                return (1 - sum(oc[w] for w in lin) / len(lin)) + (len(neg) - sum(oc[w] for w in neg)) / len(neg)
             row = dict(group=group, n_sim=v["n"], sim_weight=v["weight"], losses=v["losses"], noise=v["noise"],
-                       seed=seed, model2_correct=sum(o[MODELS[1]].values()), model3_correct=sum(o[MODELS[2]].values()),
+                       seed=seed, model2_ndcf=round(ndcf(o[MODELS[1]]), 3), model3_ndcf=round(ndcf(o[MODELS[2]]), 3),
+                       model2_correct=sum(o[MODELS[1]].values()), model3_correct=sum(o[MODELS[2]].values()),
                        n_walks=len(o[MODELS[2]]), h1_b=b, h1_c=c, h1_p=round(p, 3))
             if args.auc:
                 both = pd.concat([sim.assign(is_sim=1), test_pool.assign(is_sim=0)], ignore_index=True)
@@ -102,11 +115,15 @@ def main():
 
     keys = ["group", "n_sim", "sim_weight", "losses", "noise"]
     agg = df.groupby(keys, sort=False).agg(
+        model2_nDCF=("model2_ndcf", "mean"), model3_nDCF=("model3_ndcf", "mean"),
         model2=("model2_correct", "mean"), model3=("model3_correct", "mean"),
         h1_p=("h1_p", "median"), seeds=("seed", "count"),
         **({"auc": ("sim_vs_real_auc", "mean")} if args.auc else {})).reset_index()
     for col in ("model2", "model3"):
         agg[col] = [fmt(int(round(x)), n) if s == 1 else f"{x:.1f}/{n}" for x, s in zip(agg[col], agg.seeds)]
+    agg[["model2_nDCF", "model3_nDCF"]] = agg[["model2_nDCF", "model3_nDCF"]].round(2)
+    print("\nnDCF = miss rate + false-alarm rate: lower is better, 1.0 = same as never alerting. Walks correct is"
+          " shown too, but never alerting already scores the non-linger walks, so compare variants on nDCF.")
     print(f"\nModels 2 and 3 under each variant (walks correct out of {n}; "
           f"{'mean over seeds' if len(args.seeds) > 1 else '95% Wilson interval'}; h1_p = Model 3 vs Model 1, McNemar)")
     print(agg.to_string(index=False))

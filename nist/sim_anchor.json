@@ -1,0 +1,15 @@
+{
+  "near_m": 2.0,
+  "near_dbm": -49.7,
+  "far_m": 4.0,
+  "far_dbm": -56.8,
+  "noise_scale": 1.434,
+  "_source": {
+    "walks": "data/runs_session1",
+    "n_walks": 24,
+    "rate": 11.4,
+    "cutoff": -59.5,
+    "real_var_rssi": 52.7,
+    "sim_var_rssi": 52.7
+  }
+}

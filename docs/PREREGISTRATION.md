@@ -125,3 +125,5 @@ settings on session 2, it (a) catches at least 4 of 8 lingers on time, (b) has a
 the models did not clear the bar.
 
 Analyses pooling sessions 1 and 2, or tuned after seeing session 2, are exploratory.
+(Amendment 3, addendum before session 2: simulated far walks stand at 4 m ± 0.3, matching the
+protocol's 4 m mark; previously 3.5-6 m. The ablations now clear their simulated walks each run.)

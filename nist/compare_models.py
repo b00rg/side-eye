@@ -252,7 +252,8 @@ def main():
 
     main_rows = {"Rule (3 s)": [score_walks(f, rule_wait=3) for f in scored]}
     main_rows.update({n: model_rows(n, THRESH) for n in MODELS})
-    table = pd.DataFrame([summarise(n, rs) for n, rs in main_rows.items()])
+    never = [score_walks(f.assign(_score=0.0), thresh=2.0) for f in scored]   # a device that never buzzes
+    table = pd.DataFrame([summarise(n, rs) for n, rs in main_rows.items()] + [summarise("Never alert (reference)", never)])
     outcome = {n: {w: c for r in rs for w, c in r["correct"].items()} for n, rs in main_rows.items()}
     tests = []
     for label, better, worse in HYPOTHESES:
