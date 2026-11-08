@@ -133,3 +133,27 @@ protocol's 4 m mark; previously 3.5-6 m. The ablations now clear their simulated
 therefore set from session 1's walks instead: stopped-linger median -49.7 dBm, far-walk median
 -56.8 dBm, cutoff -53.3 dBm (settings.json: threshold_dbm -53.3, near_median -49.7, far_median -56.8).
 Both failed attempts' midpoints, -52.5 and -56.0, bracket it.)
+
+## Amendment 4: shape-over-time model, confirmatory test (written before the confirmation walks)
+
+**Exploratory finding (session 1, after seeing the data):** signal *level* can't separate lingering
+in our room, but signal *shape over time* can. A random forest (`pi/train_model.model_factory`) on
+four inputs computed from each walk's past rows only (`nist/shape_features.py`): rise above the
+recent low, drop below the recent high, steadiness, and seconds held up, caught 5/8 lingers with
+0/16 false-alarm walks (nDCF 0.38) under session 1's folds, where the level inputs reached 1/8 and
+2/16 and the 3-second rule 1/8 and 16/16. Across 36 settings of the windows and rise threshold, all
+36 beat never buzzing (median nDCF 0.44, range 0.19-0.81). Because it was found on session 1, it is
+exploratory until confirmed on new walks.
+
+**Fixed now:** low window 20 rows, steadiness window 8 rows, rise 4 dB; alert when the score is
+>= 0.8 twice within 2.5 s (as everywhere else). Trained on all 24 session-1 walks, no tuning on the
+confirmation walks.
+
+**Confirmation walks:** 16 new walks recorded after this commit with `pi/record_timed.py --confirm`:
+6 linger, 6 passer, 4 far, shuffled; same transmitter (UNO Q at head height), Pi position and walk
+rules as session 1; settings.json cutoff -53.3 (used only by the 3-second rule's features).
+
+**H4 (primary):** on the confirmation walks the shape model has TC4TL nDCF below 1.0 (beats never
+buzzing) and below the 3-second rule's. **Secondary:** it catches at least half the lingers, with
+false alarms on at most 20% of the other walks. Tested once with `nist/shape_confirm.py`; reported
+whatever the result, alongside the level model, the rule and never buzzing.

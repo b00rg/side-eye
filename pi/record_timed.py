@@ -104,8 +104,12 @@ async def record_timed(scenario, header):
     return path, len(rows), sum(r["label"] for r in rows)
 
 
-async def main(gap):
-    plan = [s for s, n in canary.WALK_PLAN for _ in range(n)]
+CONFIRM_PLAN = ("linger passer far linger passer linger far passer linger passer far linger "
+                "passer linger far passer").split()   # Amendment 4: 6 linger, 6 passer, 4 far, shuffled
+
+
+async def main(gap, args_plan=None):
+    plan = [s for s, n in canary.WALK_PLAN for _ in range(n)] if not args_plan else args_plan
     existing = len(list(RUNS.glob("*.csv"))) if RUNS.exists() else 0
     print(f"TIMED RECORDING: {len(plan)} walks, saving to {RUNS} (cutoff {threshold()} dBm). Ctrl+C pauses.")
     if existing:
@@ -129,8 +133,10 @@ async def main(gap):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--gap", type=float, default=12, help="seconds between walks to reposition (default 12)")
+    ap.add_argument("--confirm", action="store_true",
+                    help="record the 16-walk confirmation set (6 linger, 6 passer, 4 far) instead of WALK_PLAN")
     args = ap.parse_args()
     try:
-        asyncio.run(main(args.gap))
+        asyncio.run(main(args.gap, CONFIRM_PLAN if args.confirm else None))
     except KeyboardInterrupt:
         print("\nPaused. Saved walks are kept; run again to continue from the next walk.")
