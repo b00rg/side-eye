@@ -43,6 +43,17 @@ python3 demo_live.py              # options: --strong -24 --count 3 --window 2 -
 - Demo mode sidesteps that by only reacting to **very close contact**, where the signal is
   unambiguous.
 
+## Why the demo uses a rule, not a model: `docs/figures/concept.png`
+Same methods, folds and score (TC4TL nDCF: misses + false alarms, lower is better, 1.0 = never
+buzzing) in two worlds. Left, simulated walks where the signal falls off with distance: the models
+beat the 3-second rule clearly (Model 1 0.12, Models 2-3 0.25, rule 1.50). Right, our real room
+(session 1): nothing beats never buzzing (rule 1.88, models 1.00-1.25). The models work when the
+signal carries distance; our hardware in a real room doesn't provide it, so the next step is
+better sensing (second receiver, motion sensor), not a better model. Left-hand walks are simulated
+for both training and testing, so they show the concept, not real-world performance. Rebuild with
+`python3 scripts/concept_figure.py --out docs/figures/concept.png`. (Model 2's real-room bar uses
+the current simulator, with far walks at 4 m; the pre-registered session 1 run gave Model 2 1.12.)
+
 ## Assumptions and limits (say these out loud)
 - One room, one receiver (Raspberry Pi 4), one transmitter (UNO Q broadcasting Meta's company ID
   0x058E every 20 ms) standing in for real glasses. Not validated on real smart glasses.

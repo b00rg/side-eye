@@ -42,6 +42,7 @@ START_MONO = 5000.0           # canary.py writes time.monotonic(); any start val
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("mitre_csv")
+    ap.add_argument("--out", help="write runs/ and settings.json into this folder instead of data/runs and the repo root")
     ap.add_argument("--realistic", action="store_true", help="use the scan-check-like settings instead of the working case")
     ap.add_argument("--near", type=float); ap.add_argument("--far", type=float)
     ap.add_argument("--rate", type=float); ap.add_argument("--seed", type=int)
@@ -50,10 +51,10 @@ def main():
     cfg.update({k: v for k, v in vars(args).items() if k in cfg and v is not None})
     NEAR, FAR, RATE, SEED = cfg["near"], cfg["far"], cfg["rate"], cfg["seed"]
     mitre_csv = args.mitre_csv
-    runs = os.path.join(ROOT, "data", "runs")
+    runs = os.path.join(args.out, "runs") if args.out else os.path.join(ROOT, "data", "runs")
     os.makedirs(runs, exist_ok=True)
     cutoff = round((NEAR + FAR) / 2, 1)
-    with open(os.path.join(ROOT, "settings.json"), "w") as f:
+    with open(os.path.join(args.out or ROOT, "settings.json"), "w") as f:
         json.dump({"threshold_dbm": cutoff, "near_median": NEAR, "far_median": FAR}, f, indent=2)
         f.write("\n")
     open(os.path.join(runs, "PLACEHOLDER"), "w").close()
