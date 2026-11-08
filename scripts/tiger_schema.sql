@@ -52,7 +52,10 @@ CREATE INDEX IF NOT EXISTS events_device_time ON events (device_id, time DESC);
 CREATE INDEX IF NOT EXISTS events_pending ON events (time DESC) WHERE buzzed AND glasses_present IS NULL;
 
 -- Each row with its outcome spelled out, for queries and dashboards.
-CREATE OR REPLACE VIEW event_outcomes AS
+-- Dropped and recreated (not CREATE OR REPLACE): `SELECT *` picks up columns added to events later,
+-- and Postgres won't replace a view whose columns move. Nothing depends on it; it holds no data.
+DROP VIEW IF EXISTS event_outcomes;
+CREATE VIEW event_outcomes AS
 SELECT *,
     CASE
         WHEN buzzed AND glasses_present      THEN 'TP'
