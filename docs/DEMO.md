@@ -54,6 +54,26 @@ for both training and testing, so they show the concept, not real-world performa
 `python3 scripts/concept_figure.py --out docs/figures/concept.png`. (Model 2's real-room bar uses
 the current simulator, with far walks at 4 m; the pre-registered session 1 run gave Model 2 1.12.)
 
+## Real-world check on public data: H0H1 (`nist/h0h1_eval.py`)
+Does the model beat a simple threshold on **real** Bluetooth data that isn't ours? MIT Lincoln
+Laboratory's H0H1 dataset (PACT, CC BY 4.0): people living together, iPhones in hands or pockets,
+~15 min sessions in their homes, either within 6 ft ("close") or 10 ft or more apart ("far").
+17 sessions (11 close, 6 far), 1,094 ten-second windows, grouped 5-fold cross-validation by session.
+
+| | 10 s windows | 30 s windows |
+|---|---|---|
+| Best single threshold (chosen on training sessions) | 64% (95% CI 53-76%) | 63% |
+| Random forest, all inputs | 53% (43-65%) | 58% |
+| Random forest, without readings/s (exploratory) | 59% | 62% |
+| Random forest, signal level only (exploratory) | 59% | 62% |
+
+Balanced accuracy; 50% = coin flip. The model at best ties the threshold and never beats it, and
+neither gets much past ~60-65%. This matches session 1 and NIST IR 8437: **Bluetooth signal
+strength alone carries little distance information in real spaces**, so the limit is the sensor,
+not the model. The simulated "models win" panel in `docs/figures/concept.png` only holds where the
+signal tracks distance cleanly, which real rooms don't provide. Next steps are better sensing
+(a second receiver, a motion sensor on the wearer, UWB), not a better model.
+
 ## Assumptions and limits (say these out loud)
 - One room, one receiver (Raspberry Pi 4), one transmitter (UNO Q broadcasting Meta's company ID
   0x058E every 20 ms) standing in for real glasses. Not validated on real smart glasses.
