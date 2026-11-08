@@ -13,7 +13,7 @@ rm -f data/runs/*.csv
 "$PY" scripts/tiger.py export .
 
 echo "== 2. Full results pipeline"
-"$PY" scripts/run_results.py "$@"
+"$PY" scripts/run_results.py --runs data/runs "$@"
 
 echo "== 3. Simulated rows for the Pi, from this run's simulation"
 CUTOFF=$("$PY" -c "import json; print(json.load(open('settings.json'))['threshold_dbm'])")

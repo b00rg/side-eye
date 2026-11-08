@@ -1,9 +1,9 @@
-"""Run the whole results pipeline on the walks in data/runs/ in one go.
+"""Run the whole results pipeline on one folder of real walks in one go.
 
-Usage (from the repo root, after the walks and settings.json are in place):
-  python3 scripts/run_results.py [--skip-ablations] [--seeds 0,1,2]
+Usage (from the repo root):
+  python3 scripts/run_results.py --runs data/runs_session1 [--skip-ablations] [--seeds 0,1,2]
 
-Reads the cutoff from settings.json (threshold_dbm) and the reading rate from the walks
+Reads the cutoff from <runs>/settings.json if present, else the repo's settings.json (threshold_dbm) and the reading rate from the walks
 (median packet_rate_hz), checks the walk mix, then runs, in order:
   1. pi/train_model.py                    Lili's training printout (T14), saves model.joblib
   2. nist/simulate_walks.py               300 simulated walks, seed 0 (T23, as pre-registered)
@@ -24,7 +24,7 @@ import sys
 import pandas as pd
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RUNS = os.path.join(ROOT, "data", "runs")
+RUNS = None   # set from --runs
 OUT = os.path.join(ROOT, "results")
 EXPECTED = {"linger": 8, "passer": 8, "far": 4, "bag": 2, "blocked": 2}
 KINDS = list(EXPECTED)
@@ -55,13 +55,14 @@ def run(log, title, args, cwd=OUT):
 
 
 def check_inputs(log):
-    if not os.path.exists(p("settings.json")):
-        sys.exit("No settings.json at the repo root. Copy it off the Pi first (see data/README.md).")
-    settings = json.load(open(p("settings.json")))
+    path = os.path.join(RUNS, "settings.json") if os.path.exists(os.path.join(RUNS, "settings.json")) else p("settings.json")
+    if not os.path.exists(path):
+        sys.exit("No settings.json in the walk folder or at the repo root.")
+    settings = json.load(open(path))
     cutoff = float(settings["threshold_dbm"])
     files = sorted(glob.glob(os.path.join(RUNS, "*.csv")))
     if not files:
-        sys.exit("No walks in data/runs/. Copy them off the Pi first (see data/README.md).")
+        sys.exit(f"No walks in {RUNS}. Copy them off the Pi first (see data/README.md).")
     kinds = pd.Series([next((k for k in KINDS if k in os.path.basename(f)), "unknown") for f in files]).value_counts()
     rate = round(float(pd.concat(pd.read_csv(f, usecols=["packet_rate_hz"]) for f in files).packet_rate_hz.median()), 2)
 
@@ -74,7 +75,7 @@ def check_inputs(log):
     if wrong or "unknown" in kinds:
         log("  WARNING: walk mix differs from the plan (8 linger, 8 passer, 4 far, 2 bag, 2 blocked): "
             + ", ".join(f"{k} {have} (expected {want})" for k, (have, want) in wrong.items())
-            + ". Check data/runs/ for leftover or missing files before trusting results.")
+            + f". Check {RUNS} for leftover or missing files before trusting results.")
     return cutoff, rate
 
 
@@ -107,12 +108,11 @@ def t25_decision(log):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-ablations", action="store_true")
-    ap.add_argument("--runs", help="folder of walk CSVs (default data/runs), e.g. data/runs_session1")
+    ap.add_argument("--runs", required=True, help="folder of walk CSVs, e.g. data/runs_session1")
     ap.add_argument("--seeds", default="0", help="simulation seeds for the ablations, e.g. 0,1,2")
     args = ap.parse_args()
     global RUNS
-    if args.runs:
-        RUNS = os.path.abspath(args.runs)
+    RUNS = os.path.abspath(args.runs)
     os.makedirs(OUT, exist_ok=True)
     log = Log(os.path.join(OUT, "log.txt"))
     cutoff, rate = check_inputs(log)

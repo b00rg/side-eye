@@ -13,15 +13,15 @@ Calibrate with zeus worn at head height, then record the 24 walks in the run-she
 
 ## 2. Bring the walks to the Mac (repo root)
 ```
-rm -f data/runs/*.csv
-scp canary@canary.local:/home/canary/canary/data/runs/*.csv data/runs/
+mkdir -p data/runs_session3
+scp 'canary@canary.local:~/data/runs/*.csv' data/runs_session3/
 scp canary@canary.local:/home/canary/canary/settings.json settings.json
 ```
-Clear the folder first, or results silently mix walks from different sessions.
+Use a new session folder each time, so sessions never mix.
 
 ## 3. Results (Mac, about a minute)
 ```
-python3 scripts/run_results.py
+python3 scripts/run_results.py --runs data/runs_session3
 ```
 Prints Lili's training printout, the Rule vs Models 1-3 table (walks correct /24 with 95% ranges),
 the pre-registered tests, both sweeps, the fake-vs-real check, nDCF, ablations, and the **T25
@@ -53,7 +53,7 @@ scikit-learn version.
 
 ## 5. See what it does (Mac)
 ```
-python3 scripts/replay_walk.py data/runs/<a linger walk>.csv data/runs/<a passer walk>.csv
+python3 scripts/replay_walk.py data/runs_session2/<a linger walk>.csv data/runs_session2/<a passer walk>.csv
 ```
 Plays recorded walks through Model 3, laid out like the `live` screen, with the rule alongside.
 
@@ -70,7 +70,7 @@ python3 scripts/live_graph.py --ssh canary@canary.local      # follows canary.se
 Top: signal vs the near/far cutoff. Bottom: Model 3's score vs 0.8. Solid BUZZ line when the motor
 fires; dotted line where the old 3-second rule would have. Rehearse without the Pi:
 `python3 scripts/fake_live.py --stream | python3 scripts/live_graph.py --stdin`, or replay recorded
-walks: `python3 scripts/live_graph.py --replay data/runs/<walk>.csv ...`. Slide figure (a walk-past and
+walks: `python3 scripts/live_graph.py --replay data/runs_session2/<walk>.csv ...`. Slide figure (a walk-past and
 a linger side by side): `python3 scripts/plot_walk_pair.py` (or `--db "$DATABASE_URL"` to read from
 Tiger); `deploy_model3.py` also makes it as `results/walk_pair.png`.
 

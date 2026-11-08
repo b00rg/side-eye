@@ -1,7 +1,7 @@
 """Can a classifier tell simulated walks from real ones? (exploratory, docs/PREREGISTRATION.md)
 
 Usage (from the repo root):
-  python3 nist/sim_vs_real.py --sim nist/sim --real data/runs --cutoff <threshold_dbm>
+  python3 nist/sim_vs_real.py --sim nist/sim --real data/runs_session1 --cutoff <threshold_dbm>
 
 If the simulation is realistic, a classifier given the four model inputs cannot separate
 simulated rows from real rows: AUC near 0.5. AUC near 1.0 means the fakes are easy to spot,

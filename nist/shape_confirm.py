@@ -1,7 +1,7 @@
 """Confirmatory test of the shape model (docs/PREREGISTRATION.md, Amendment 4).
 
 Usage (from the repo root, after the confirmation walks are in their own folder):
-  python3 nist/shape_confirm.py --train data/runs_session1 --test data/runs_confirm
+  python3 nist/shape_confirm.py --train data/runs_session1 --test data/runs_session2
 
 Trains on ALL session-1 walks, tests once on the confirmation walks (never seen, recorded after the
 amendment). Same alert rule as everywhere else (score >= 0.8 twice within 2.5 s; walk-level scoring
@@ -32,7 +32,7 @@ def summary(rows):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--train", default="data/runs_session1")
-    ap.add_argument("--test", default="data/runs_confirm")
+    ap.add_argument("--test", default="data/runs_session2")
     args = ap.parse_args()
     train = add_shape_all(load_real(args.train))
     test = add_shape_all(load_real(args.test))

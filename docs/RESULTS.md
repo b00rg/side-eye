@@ -14,6 +14,9 @@ far >= 10 ft): the best single threshold reached 64% balanced accuracy, our rand
 neither gets far past ~60-65% (`nist/h0h1_eval.py`, `docs/DEMO.md`). Consistent with NIST IR 8437.
 
 ## 2. Signal *shape over time* can (exploratory on session 1, then confirmed)
+
+Session 2 (`data/runs_session2/`) is the 16 confirmation walks from Amendment 4; the session 2 planned
+in Amendment 3 was abandoned before any of its walks were kept.
 Instead of "how strong", the shape model asks "what is the signal doing": rise above its recent
 low, drop below its recent high, steadiness, and seconds held up (`nist/shape_features.py`; past
 rows only, as on the device). Same random forest, same alert rule (score >= 0.8 twice within 2.5 s).
@@ -39,7 +42,7 @@ wrong 9/10 times overall); 5/6 lingers (the miss alerted while the walker was st
 walk-pasts falsely alerted, because at the peak of a walk-past the signal has just risen and briefly
 looks like "arrived and stayed". With 6 lingers and 10 other walks the intervals are wide.
 
-Reproduce: `python3 nist/shape_confirm.py --train data/runs_session1 --test data/runs_confirm`.
+Reproduce: `python3 nist/shape_confirm.py --train data/runs_session1 --test data/runs_session2`.
 
 ## What this means
 - Bluetooth signal strength alone can't tell *how close* someone is in a real room (our walks, MIT's

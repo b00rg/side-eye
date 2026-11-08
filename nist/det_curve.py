@@ -1,7 +1,7 @@
 """Miss vs false-alarm trade-off (DET-style) and TC4TL nDCF, on held-out real walks (exploratory).
 
 Usage (from the repo root):
-  python3 nist/det_curve.py --sim nist/sim --real data/runs --cutoff <threshold_dbm> [--out nist/det_curve.png]
+  python3 nist/det_curve.py --sim nist/sim --real data/runs_session1 --cutoff <threshold_dbm> [--out nist/det_curve.png]
 
 Same walks, folds and models as compare_models.py. At walk level:
   miss rate        = linger walks not alerted on time (missed or early) / linger walks

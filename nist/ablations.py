@@ -2,7 +2,7 @@
 
 Usage (from the repo root, once the real walks and settings.json exist):
   python3 nist/ablations.py --mitre data/external/mitre_rssi.csv --settings settings.json \\
-      --real data/runs --cutoff <threshold_dbm> --rate <Pi packets/s> [--seeds 0,1,2] [--auc]
+      --real data/runs_session1 --cutoff <threshold_dbm> --rate <Pi packets/s> [--seeds 0,1,2] [--auc]
 
 Every variant is scored on the same real walks with the same folds as compare_models.py.
 For each it reports Models 2 and 3 (walks correct /N with 95% Wilson interval) and the

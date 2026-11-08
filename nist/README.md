@@ -9,8 +9,7 @@ This file is the running record of where the data stands. Tasks reference the
 GitHub issues (T-numbers) in `TODO.md`.
 
 ## Pipeline
-**One command runs everything** once the walks are in `data/runs/` and `settings.json` is at the
-repo root: `python3 scripts/run_results.py` (add `--skip-ablations` for a quick pass). It reads the
+**One command runs everything** on a folder of real walks: `python3 scripts/run_results.py --runs data/runs_session1` (add `--skip-ablations` for a quick pass). It reads the
 cutoff and reading rate itself, checks the walk mix, runs steps 1-3 below plus the analyses in the
 TODO list, prints the T25 decision, and writes everything to `results/` (with `results/log.txt`).
 
@@ -23,9 +22,8 @@ The individual steps, if you need them. Run every command from the repo root.
 2. After calibration (`python3 pi/canary.py calibrate`), `settings.json` is at the repo root
    (copy it off the Pi if you're working elsewhere), then
    `python3 nist/simulate_walks.py data/external/mitre_rssi.csv settings.json nist/sim --n 300 --rate <Pi packets/s>`
-   `nist/settings_example.json` has the same format and can stand in until then.
-3. After the 24 real walks are recorded into `data/runs/` (`python3 pi/canary.py record <scenario>`):
-   `python3 nist/compare_models.py --sim nist/sim --real data/runs --cutoff <threshold_dbm from settings.json>`
+3. With real walks in a session folder (e.g. `data/runs_session1/`):
+   `python3 nist/compare_models.py --sim nist/sim --real data/runs_session1 --cutoff <threshold_dbm from settings.json>`
    Prints the main table (rule waits 3 s, models alert at 0.8) plus two sweeps: the rule's wait
    (`--rule-waits`, default 1-6 s) and the models' score cutoff (`--thresholds`, default
    0.6,0.8,0.9). Saves `comparison_results.csv`, `rule_wait_sweep.csv`, `threshold_sweep.csv`.
@@ -35,11 +33,6 @@ The individual steps, if you need them. Run every command from the repo root.
    `python3 nist/obstruction_losses.py data/external/nist/BLE_RSSI_Data data/external/vsc nist/obstruction_losses.json`
    Each simulated bag or blocked walk draws one loss from that file. If the file is missing,
    `simulate_walks.py` falls back to the old constants (`BLOCK_DB` 6, `BAG_DB` 9) and says so.
-5. Sanity mode without real walks: leave out `--real`, e.g.
-   `python3 nist/simulate_walks.py data/external/mitre_rssi.csv nist/settings_example.json nist/sim_test --n 200`
-   `python3 nist/compare_models.py --sim nist/sim_test --cutoff -68`
-
-`sim_check.png` is a visual check of simulated walks.
 
 **Slide figure (T21):** `nist/nist_spread.png`, rebuilt with
 `python3 nist/plot_spread.py data/external/nist/BLE_RSSI_Data nist/nist_spread.png`.
@@ -170,16 +163,16 @@ calibration and all walks; blocked walk with B 0.5 m in front of the Pi (`BLOCK_
 - [x] Pre-registered measures (`docs/PREREGISTRATION.md`): walks correct /24 with a 95% Wilson
       interval in the main table, and exact one-sided McNemar tests for H1-H3
       (`hypothesis_tests.csv`).
-- [x] Fake-vs-real check (`nist/sim_vs_real.py --sim nist/sim --real data/runs --cutoff <dBm>`):
+- [x] Fake-vs-real check (`nist/sim_vs_real.py --sim nist/sim --real data/runs_session1 --cutoff <dBm>`):
       AUC of a classifier telling simulated from real rows on held-out walks (0.5 = realistic),
       per-input AUC, and medians by walk type. Validated: 0.47 on fake-vs-fake, 0.82 with a
       6 dB shift planted in `mean_rssi`, which it flags.
 - [x] Ablations and learning curve (`nist/ablations.py --mitre ... --settings settings.json
-      --real data/runs --cutoff <dBm> --rate <Hz> [--seeds 0,1,2] [--auc]`): Models 2-3 with
+      --real data/runs_session1 --cutoff <dBm> --rate <Hz> [--seeds 0,1,2] [--auc]`): Models 2-3 with
       50-1000 simulated walks, sim weight 0.1-1.0, guessed vs measured losses, Gaussian vs MITRE
       noise. `simulate_walks.py --noise gaussian` added for the noise ablation. On fake walks the
       AUC check flags Gaussian noise (0.74) but not MITRE replay (0.47).
-- [x] Miss vs false-alarm curve and TC4TL nDCF (`nist/det_curve.py --sim nist/sim --real data/runs
+- [x] Miss vs false-alarm curve and TC4TL nDCF (`nist/det_curve.py --sim nist/sim --real data/runs_session1
       --cutoff <dBm> --out nist/det_curve.png`): each model swept over score cutoffs, the rule over
       waits of 1-8 s, walk-level miss and false-alarm rates, nDCF = miss + false alarm (TC4TL pilot
       plan, weights 1/1), and row-level ROC AUC. The "best" setting is picked on the test walks, so

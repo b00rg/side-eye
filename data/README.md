@@ -1,6 +1,6 @@
 # data/
 
-## data/runs/: real walks (committed)
+## Real walks (committed)
 Put the 24 real walk CSVs recorded on the Pi (`python3 pi/canary.py record <scenario>`) here:
 8 linger, 8 passer, 4 far, 2 bag, 2 blocked.
 
@@ -15,13 +15,13 @@ MAC addresses, locations). Ours only contain our own test phone's advertisement
 
 ## Real walk folders
 - `data/runs_session1/`: session 1, 24 walks + its `settings.json` (pre-registered results).
-- `data/runs_confirm/`: the 16 confirmation walks for the shape model (Amendment 4).
-- `data/runs/`: empty; new recordings go here. To bring walks from the Pi (Lili's `canary.py` saves
-  to `~/data/runs/` on the Pi):
+- `data/runs_session2/`: the 16 confirmation walks for the shape model (Amendment 4).
+- New recordings: on the Pi, Lili's `canary.py` saves to `~/data/runs/`. Copy them into a new
+  session folder:
 ```
-scp 'canary@canary.local:~/data/runs/*.csv' data/runs/
-scp canary@canary.local:~/settings.json settings.json
-```
+mkdir -p data/runs_session3
+scp 'canary@canary.local:~/data/runs/*.csv' data/runs_session3/
+scp canary@canary.local:~/settings.json data/runs_session3/settings.json
 
 ## data/external/: public datasets (not committed)
 Created by `scripts/get_mitre.sh`. Holds the cloned MITRE Range-Angle (Structured) repo

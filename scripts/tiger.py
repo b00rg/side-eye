@@ -7,7 +7,7 @@ Usage (from the repo root; DATABASE_URL is Tiger Cloud's connection string, or a
   python3 scripts/tiger.py export OUTDIR               # files the pipeline uses, rebuilt from the DB
   python3 scripts/tiger.py status
 
-What goes in: our recorded walks (data/runs) and calibration (settings.json), NIST BLE RSSI readings,
+What goes in: our recorded walks (data/runs_session1, data/runs_session2) and calibration (settings.json), NIST BLE RSSI readings,
 simulated training rows (data/sim_rows.csv), and optionally MITRE readings and the anonymous feedback
 rows from the Pi's button. Only training data: the live detector's readings never go here, and
 feedback rows carry no device identifiers (see pi/feedback.py).
@@ -76,12 +76,14 @@ def copy_rows(cur, table, cols, rows):
             cp.write_row(r)
 
 
-def load_walks(cur):
-    runs = os.path.join(ROOT, "data", "runs")
+SESSIONS = [os.path.join(ROOT, "data", "runs_session1"), os.path.join(ROOT, "data", "runs_session2")]
+
+
+def load_walks(cur, folders=SESSIONS):
     settings = json.load(open(os.path.join(ROOT, "settings.json")))
     cur.execute("INSERT INTO calibration (near_median, far_median, threshold_dbm) VALUES (%s, %s, %s)",
                 (settings.get("near_median"), settings.get("far_median"), settings["threshold_dbm"]))
-    files = sorted(glob.glob(os.path.join(runs, "*.csv")))
+    files = sorted(f for folder in folders for f in glob.glob(os.path.join(folder, "*.csv")))
     for path in files:
         d = pd.read_csv(path)
         run_id = d.run_id.iloc[0]

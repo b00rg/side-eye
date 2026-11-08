@@ -1,7 +1,7 @@
 """Slide figure: a walk-past and a linger side by side (signal, Model 3 score, alerts).
 
 Usage (from the repo root, after model.joblib exists):
-  python3 scripts/plot_walk_pair.py --out results/walk_pair.png                      # first passer + linger in data/runs
+  python3 scripts/plot_walk_pair.py --out results/walk_pair.png                      # first passer + linger in data/runs_session2
   python3 scripts/plot_walk_pair.py --passer <file> --linger <file> --out ...        # pick the walks
   python3 scripts/plot_walk_pair.py --db "$DATABASE_URL" --out ...                   # read the walks from Tiger
 
@@ -31,7 +31,7 @@ SIGNAL, SCORE = "#2a78d6", "#eb6834"
 
 
 def from_files(passer, linger):
-    pick = lambda kind, given: given or sorted(glob.glob(os.path.join(ROOT, "data", "runs", f"*-{kind}.csv")))[0]
+    pick = lambda kind, given: given or sorted(glob.glob(os.path.join(ROOT, "data", "runs_session2", f"*-{kind}.csv")))[0]
     return pd.read_csv(pick("passer", passer)), pd.read_csv(pick("linger", linger))
 
 
@@ -65,7 +65,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--passer")
     ap.add_argument("--linger")
-    ap.add_argument("--db", help="read the walks from Tiger instead of data/runs")
+    ap.add_argument("--db", help="read the walks from Tiger instead of data/runs_session2")
     ap.add_argument("--out", default=os.path.join(ROOT, "results", "walk_pair.png"))
     args = ap.parse_args()
     walks = from_tiger(args.db) if args.db else from_files(args.passer, args.linger)

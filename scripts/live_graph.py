@@ -3,7 +3,7 @@
 Usage (from the repo root):
   python3 scripts/live_graph.py --ssh canary@canary.local          # the Pi's running canary.service
   python3 scripts/fake_live.py --stream | python3 scripts/live_graph.py --stdin   # rehearse, no Pi
-  python3 scripts/live_graph.py --replay data/runs/<walk>.csv ...  # recorded walks through Model 3
+  python3 scripts/live_graph.py --replay data/runs_session2/<walk>.csv ...  # recorded walks through Model 3
   add --snapshot out.png [--duration 90] to save a still image instead of opening a window
 
 Top panel: signal strength (raw readings as dots, smoothed average as a line) against the near/far

@@ -1,7 +1,7 @@
 """Replay a recorded walk through the trained model, printed like `canary.py live --use-model`.
 
 Usage (from the repo root, after training model.joblib):
-  python3 scripts/replay_walk.py data/runs/<walk>.csv [more walks...]
+  python3 scripts/replay_walk.py data/runs_session2/<walk>.csv [more walks...]
 
 For each second the Pi recorded, shows the signal, the near streak, Model 3's score and what each
 driver would do: the model (score >= 0.8 twice within 2.5 s) and the 3-second rule, both with the
