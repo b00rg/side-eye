@@ -442,8 +442,102 @@ def fig_transmitter():
     save(fig, t, ax, "8_transmitter.png")
 
 
+# ---------------------------------------------------------------- 9 (NIST + our room on one graph)
+def _kde(v, grid, bw=1.6):
+    v = np.asarray(v, float)
+    k = np.exp(-0.5 * ((grid[:, None] - v[None, :]) / bw) ** 2).sum(1)
+    return k / (k.sum() * (grid[1] - grid[0]))
+
+
+def fig_strength_combined():
+    """One graph: how much the signal at 2 m and at 4 m overlap, NIST lab vs our room.
+
+    Absolute dBm isn't comparable across hardware, so each source is shifted so its 2 m median is 0.
+    Ours: stopped seconds of linger walks (stop spot 2 m) and far walks (4 m mark), session 1.
+    """
+    nist = os.path.join(ROOT, "data", "external", "nist", "BLE_RSSI_Data")
+    if not os.path.isdir(nist):
+        print("skip 9: data/external/nist missing (see nist/README.md)")
+        return
+    from plot_spread import load as load_nist
+    n = load_nist(nist)
+    d = load_real(S1)
+    rows = [("NIST lab\n(5 rooms)", n[n.cm == 200].RSSI_dBm, n[n.cm == 400].RSSI_dBm),
+            ("Our room\n(session 1)", d[(d.kind == "linger") & (d.label == 1)].mean_rssi, d[d.kind == "far"].mean_rssi)]
+    grid = np.linspace(-30, 25, 600)
+    step = grid[1] - grid[0]
+    fig, ax = figure(11, 5.6)
+    ax.grid(False)
+    for i, (name, two, four) in enumerate(rows):
+        ref = two.median()
+        two, four = two - ref, four - ref
+        k2, k4 = _kde(two, grid), _kde(four, grid)
+        scale = 0.8 / max(k2.max(), k4.max())
+        base = -i * 1.15
+        ax.fill_between(grid, base, base + np.minimum(k2, k4) * scale, color=INK_2, alpha=0.25, lw=0, zorder=1)
+        for k, c in ((k2, SHAPE_C), (k4, LEVEL_C)):
+            ax.plot(grid, base + k * scale, color=c, lw=2.5, zorder=3)
+        ax.axhline(base, color=GRID, lw=1, zorder=0)
+        for v, k, c, lbl in ((two, k2, SHAPE_C, "2 m"), (four, k4, LEVEL_C, "4 m")):
+            m = v.median()
+            h = base + np.interp(m, grid, k) * scale
+            ax.vlines(m, base, h, color=c, lw=1.2, ls=(0, (3, 3)), zorder=2)
+            ax.text(m + (0.5 if lbl == "2 m" else -0.5), h + 0.03, lbl, color=c, fontsize=11, fontweight="bold",
+                    ha="left" if lbl == "2 m" else "right", va="bottom")
+        ov = np.minimum(k2, k4).sum() * step
+        ax.text(-29.5, base + 0.45, name, fontsize=12, color=INK, va="center", ha="left")
+        ax.text(-29.5, base + 0.2, f"{ov:.0%} overlap", fontsize=11, color=INK_2, va="center", ha="left",
+                fontweight="bold")
+    ax.set_yticks([])
+    ax.set_xlim(-30, 25)
+    ax.set_ylim(-1.2, 1.05)
+    ax.set_xlabel("signal strength (dB, relative to the 2 m median)        weaker  ←   →  stronger", color=INK_2)
+    fig.tight_layout()   # no title/subtitle: the slide carries the words
+    fig.savefig(os.path.join(OUT, "9_strength_combined.png"), facecolor=SURFACE)
+    plt.close(fig)
+    print("saved docs/figures/9_strength_combined.png")
+
+
+# ---------------------------------------------------------------- 10 (shape model vs strength rule, no text)
+def fig_shape_wins():
+    """Session 2 (new walks, model trained on session 1): share of walks each method got right, by walk type."""
+    test, scored = session2_scored()
+    methods = [("3-second rule\n(signal strength)", "3-second rule", RULE_C), ("Shape model", "Shape model", SHAPE_C)]
+    kinds = [("linger", "Lingers\n(should buzz)"), ("passer", "Walk-pasts\n(should stay quiet)"),
+             ("far", "Far away\n(should stay quiet)")]
+    correct = {key: score_walks(df, **kw)["correct"] for _, key, _ in methods for df, kw in [scored[key]]}
+    kind_of = test.groupby("walk").kind.first()
+    fig, ax = figure(10, 5.4)
+    ax.grid(False)
+    width = 0.36
+    for j, (label, key, color) in enumerate(methods):
+        for i, (kind, _) in enumerate(kinds):
+            walks = kind_of[kind_of == kind].index
+            right = sum(correct[key][w] for w in walks)
+            x = i + (j - 0.5) * width * 1.1
+            ax.bar(x, right / len(walks), width, color=color, zorder=3)
+            ax.text(x, right / len(walks) + 0.025, f"{right}/{len(walks)}", ha="center", va="bottom",
+                    fontsize=13, fontweight="bold", color=INK)
+        total = sum(correct[key].values())
+        name = label.replace(chr(10), " ")
+        ax.text(-0.55 + j * 1.75, 1.2, f"■ {name}: {total}/{len(correct[key])} walks right",
+                color=color, fontsize=12, fontweight="bold", ha="left", va="center")
+    ax.set_xticks(range(len(kinds)))
+    ax.set_xticklabels([k[1] for k in kinds], color=INK, fontsize=11)
+    ax.set_yticks([0, 0.5, 1])
+    ax.set_yticklabels(["0%", "50%", "100%"], color=INK_2)
+    ax.set_ylabel("walks handled correctly", color=INK_2)
+    ax.grid(axis="y", color=GRID, lw=1)
+    ax.set_ylim(0, 1.27)
+    ax.set_xlim(-0.6, 2.6)
+    fig.tight_layout()   # no title/subtitle: the slide carries the words
+    fig.savefig(os.path.join(OUT, "10_shape_wins.png"), facecolor=SURFACE)
+    plt.close(fig)
+    print("saved docs/figures/10_shape_wins.png")
+
+
 FIGS = {1: fig_level_overlap, 2: fig_nist_spread, 3: fig_h0h1, 4: fig_shape_traces, 5: fig_headline,
-        6: fig_walk_grid, 7: fig_robustness, 8: fig_transmitter}
+        6: fig_walk_grid, 7: fig_robustness, 8: fig_transmitter, 9: fig_strength_combined, 10: fig_shape_wins}
 
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
