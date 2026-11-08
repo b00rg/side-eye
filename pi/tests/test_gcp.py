@@ -389,6 +389,22 @@ class DockerImageTest(unittest.TestCase):
             capture_output=True, text=True, timeout=120)
         self.assertEqual(versions.returncode, 0, versions.stderr)
 
+    def test_image_finds_the_walks(self):
+        """Regression: without nist/ in the image, ROOT fell back to /app/pi and 0 walks were found."""
+        tag = "side-eye-retrain:test"
+        subprocess.run(["docker", "build", "-q", "-f", "gcp/Dockerfile", "-t", tag, "."],
+                       cwd=ROOT, capture_output=True, text=True, timeout=900, check=True)
+        check = subprocess.run(
+            ["docker", "run", "--rm", "--entrypoint", "python3", tag, "-c",
+             "import sys; sys.path.insert(0, 'pi'); import train_model, retrain_shape; "
+             "print(train_model.ROOT); "
+             "print(len(retrain_shape.load_walks([train_model.ROOT / f for f in retrain_shape.DEFAULT_RUNS])))"],
+            capture_output=True, text=True, timeout=120)
+        self.assertEqual(check.returncode, 0, check.stderr)
+        root, walks = check.stdout.split()
+        self.assertEqual(root, "/app")
+        self.assertGreater(int(walks), 0)
+
 
 @unittest.skipUnless(os.environ.get("SIDE_EYE_GCP_TESTS"), "set SIDE_EYE_GCP_TESTS=1 (read-only, real project)")
 class LiveProjectTest(unittest.TestCase):
@@ -418,6 +434,33 @@ class LiveProjectTest(unittest.TestCase):
         bucket = self.gcloud("storage", "buckets", "describe", f"gs://{self.project}-side-eye-models")
         self.assertEqual(bucket.get("public_access_prevention"), "enforced")
         self.assertTrue(bucket.get("uniform_bucket_level_access"))
+
+    def test_deployed_image_is_not_older_than_the_code_it_runs(self):
+        """Catches a stale job: code or walks committed after the last deploy.sh (re-run deploy.sh)."""
+        from datetime import datetime
+
+        images = self.gcloud("artifacts", "docker", "images", "list",
+                             f"{self.region}-docker.pkg.dev/{self.project}/side-eye/retrain", "--include-tags")
+        [latest] = [image for image in images if "latest" in (image.get("tags") or [])]
+        built = datetime.fromisoformat(latest["createTime"].replace("Z", "+00:00"))
+        # Everything the image is built from (gcp/Dockerfile's COPY lines + the Dockerfile itself).
+        inputs = ["gcp/Dockerfile", "pi", "data/runs_session1", "data/runs_session2"]
+        changed = subprocess.run(["git", "log", "-1", "--format=%cI", "--", *inputs], cwd=ROOT,
+                                 capture_output=True, text=True, check=True).stdout.strip()
+        if not changed:
+            self.skipTest("no git history for the image inputs")
+        self.assertGreaterEqual(built, datetime.fromisoformat(changed),
+                                f"image built {built:%Y-%m-%d %H:%M} UTC but its code changed at {changed}: "
+                                "re-run gcp/deploy.sh")
+
+    def test_job_retrains_the_shape_model(self):
+        """The image's entrypoint is pi/retrain_shape.py (the model shape_live.py runs)."""
+        self.assertIn('"pi/retrain_shape.py"', (GCP / "Dockerfile").read_text())
+        job = self.gcloud("run", "jobs", "describe", "side-eye-retrain", "--region", self.region)
+        container = job["spec"]["template"]["spec"]["template"]["spec"]["containers"][0]
+        # A --command override on the job would bypass the Dockerfile's entrypoint.
+        self.assertFalse(container.get("command"), f"job overrides the entrypoint: {container.get('command')}")
+        self.assertTrue(container["image"].endswith("/side-eye/retrain:latest"), container["image"])
 
 
 if __name__ == "__main__":
