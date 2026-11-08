@@ -33,6 +33,15 @@ readings stronger than -24 dBm arrive within 2 s, and repeats every 3 s while st
 python3 demo_live.py              # options: --strong -24 --count 3 --window 2 --cooldown 3
 ```
 
+## Shape model live (`pi/shape_live.py`), the model-driven demo
+Trained on the Pi on all 40 walks (`python3 train_shape.py ~/data/runs_session1 ~/data/runs`).
+Buzzes when someone **approaches and stays**: the signal rises clearly and holds. Walk it like the
+recordings: start at the 6 m mark or further, walk in, stop ~2 m away facing the Pi, stay ~15 s.
+Small dips and returns (never really leaving) don't look like an arrival and won't trigger it.
+The tested setting is `--alert 0.8`; for the demo `--alert 0.7` is more eager (a hand-chosen demo
+setting, not the confirmed result). First live try (8 Nov): one clear 8 dB approach buzzed; a
+5-6 dB approach peaked at 0.78 (would buzz at 0.7); a ~4 dB approach stayed low.
+
 ## This is a demo setting, not the experiment's result
 - It was tuned in the demo room, by hand, after the experiment. It is **not** pre-registered and
   was not evaluated on held-out walks.

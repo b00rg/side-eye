@@ -37,7 +37,7 @@ async def main(args):
     session = Session()
     motor = None if args.no_motor else Motor()
     shapes, alerts, last_buzz = {}, {}, {}
-    print(f"Side Eye live: shape model; threshold {limit} dBm (display only); buzz when score >= 0.8 twice "
+    print(f"Side Eye live: shape model; threshold {limit} dBm (display only); buzz when score >= {args.alert:g} twice "
           f"within 2.5 s, then wait {args.cooldown:g} s.", flush=True)
     try:
         async with new_scanner(session.callback):
@@ -51,7 +51,7 @@ async def main(args):
                 for address, snap in active:
                     features = shapes.setdefault(address, ShapeTracker()).update(snap.mean_rssi)
                     score = float(model.predict_proba([features])[0][1])
-                    fire = alerts.setdefault(address, ModelAlert()).update(now, score) \
+                    fire = alerts.setdefault(address, ModelAlert(threshold=args.alert)).update(now, score) \
                         and now - last_buzz.get(address, -1e9) >= args.cooldown
                     if fire:
                         last_buzz[address] = now
@@ -69,6 +69,8 @@ async def main(args):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-motor", action="store_true")
+    ap.add_argument("--alert", type=float, default=0.8,
+                    help="score needed twice within 2.5 s (0.8 = the tested setting; lower = more eager, e.g. 0.7 for the demo)")
     ap.add_argument("--cooldown", type=float, default=15.0, help="seconds between buzzes (default 15, as tested)")
     ap.add_argument("--pulses", type=int, default=3)
     ap.add_argument("--on", type=float, default=0.4)
