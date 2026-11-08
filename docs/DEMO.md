@@ -42,6 +42,14 @@ The tested setting is `--alert 0.8`; for the demo `--alert 0.7` is more eager (a
 setting, not the confirmed result). First live try (8 Nov): one clear 8 dB approach buzzed; a
 5-6 dB approach peaked at 0.78 (would buzz at 0.7); a ~4 dB approach stayed low.
 
+**Final demo command (worked live, 8 Nov):**
+```
+cd ~/canary && python3 shape_live.py --alert 0.7 --cooldown 8
+```
+Walk in from 6 m+, stop ~2 m facing the Pi, stay ~15 s: buzzes. Walk straight past briskly or stand
+far: quiet (walk-pasts can still occasionally trigger it; 3/6 did in the confirmation test at 0.8).
+`--alert 0.7` and `--cooldown 8` are hand-chosen demo settings; the tested result used 0.8 and 15 s.
+
 ## This is a demo setting, not the experiment's result
 - It was tuned in the demo room, by hand, after the experiment. It is **not** pre-registered and
   was not evaluated on held-out walks.
